@@ -1,0 +1,95 @@
+// Prisma schema - used for database migrations
+// Using SQLAlchemy for ORM in FastAPI
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// User model - User information and profile
+model User {
+  id               Int       @id @default(autoincrement())
+  email            String    @unique
+  firstName        String?
+  lastName         String?
+  emailVerified    Boolean   @default(false)
+  isApproved       Boolean   @default(false)  // Admin approval required
+  role             String    @default("user") // 'user' or 'admin'
+  verificationToken String?  @unique
+  passwordResetToken String? @unique
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
+  
+  // One-to-one relationship with Credential
+  credential Credential?
+  
+  chats     ChatUser[]
+  messages  ChatMessage[]
+  
+  @@index([email])
+  @@index([verificationToken])
+  @@index([passwordResetToken])
+}
+
+// Credential model - Authentication credentials (separated for security)
+model Credential {
+  id        Int      @id @default(autoincrement())
+  userId    Int      @unique  // One-to-one with User
+  username  String   @unique
+  password  String   // Hashed password
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relationship
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@index([userId])
+  @@index([username])
+}
+
+// Chat room model - supports multi-user
+model Chat {
+  id        Int      @id @default(autoincrement())
+  name      String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  lastUsed  DateTime @default(now()) @updatedAt
+  
+  users     ChatUser[]
+  messages  ChatMessage[]
+  
+  @@index([lastUsed])
+}
+
+// Junction table for many-to-many relationship
+model ChatUser {
+  chatId    Int
+  userId    Int
+  joinedAt  DateTime @default(now())
+  role      String   @default("member") // 'member', 'admin', 'owner'
+  
+  chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@id([chatId, userId])
+  @@index([chatId])
+  @@index([userId])
+}
+
+// Message in a chat room
+model ChatMessage {
+  id        Int      @id @default(autoincrement())
+  chatId    Int
+  userId    Int      // Sender
+  message   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
+  sender    User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([chatId])
+  @@index([userId])
+  @@index([createdAt])
+  @@index([chatId, createdAt])
+}
