@@ -1,0 +1,21 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install deps (includes Prisma CLI in devDependencies)
+COPY package.json package-lock.json ./
+RUN npm ci
+
+# Prisma schema + migrations
+COPY prisma ./prisma
+RUN npx prisma generate
+
+# App source
+COPY server ./server
+
+ENV NODE_ENV=production
+
+EXPOSE 5052
+
+CMD ["node", "server/index.js"]
+
