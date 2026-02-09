@@ -13,7 +13,20 @@ load_dotenv()
 DATABASE_URL = os.getenv("DATABASE_URL")
 
 if not DATABASE_URL:
-    raise ValueError("DATABASE_URL environment variable is not set. Please check your .env file.")
+    error_msg = (
+        "DATABASE_URL environment variable is not set.\n\n"
+        "Please create a .env file in the Backend/website directory with the following content:\n\n"
+        "DATABASE_URL=\"postgresql://username:password@localhost:5432/database_name\"\n\n"
+        "Example for BS_DB:\n"
+        "DATABASE_URL=\"postgresql://Bingsu_Db_Admin:your_password@localhost:5432/BS_DB\"\n\n"
+        "See README.md for more details."
+    )
+    raise ValueError(error_msg)
+
+# Convert postgresql:// to postgresql+psycopg:// if using psycopg (psycopg3)
+# This ensures compatibility with Python 3.13
+if DATABASE_URL.startswith("postgresql://") and not DATABASE_URL.startswith("postgresql+psycopg://"):
+    DATABASE_URL = DATABASE_URL.replace("postgresql://", "postgresql+psycopg://", 1)
 
 # Create engine with connection pool settings for high concurrency
 # pool_size: Number of connections to keep open (default: 5)

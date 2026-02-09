@@ -140,29 +140,29 @@ async def log_requests(request: Request, call_next):
     start_time = time.time()
     
     try:
-    # Process request
-    response = await call_next(request)
-    
+        # Process request
+        response = await call_next(request)
+        
         # Ensure CORS headers are present on all responses
         origin = request.headers.get("origin")
         if origin and is_allowed_origin(origin):
             if "Access-Control-Allow-Origin" not in response.headers:
                 response.headers["Access-Control-Allow-Origin"] = origin
                 response.headers["Access-Control-Allow-Credentials"] = "true"
-    
-    # Log response
-    process_time = time.time() - start_time
-    
-    # Only log slow requests (>1s) or errors to reduce logging overhead
-    if process_time > 1.0 or response.status_code >= 400:
-        app_logger.info(
-            f"{request.method} {request.url.path} - "
-            f"Status: {response.status_code} - "
-            f"Time: {process_time:.3f}s - "
-            f"Client: {request.client.host if request.client else 'unknown'}"
-        )
-    
-    return response
+        
+        # Log response
+        process_time = time.time() - start_time
+        
+        # Only log slow requests (>1s) or errors to reduce logging overhead
+        if process_time > 1.0 or response.status_code >= 400:
+            app_logger.info(
+                f"{request.method} {request.url.path} - "
+                f"Status: {response.status_code} - "
+                f"Time: {process_time:.3f}s - "
+                f"Client: {request.client.host if request.client else 'unknown'}"
+            )
+        
+        return response
     except Exception as e:
         # Log the error
         app_logger.error(f"Error processing request: {e}", exc_info=True)
