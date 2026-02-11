@@ -29,12 +29,9 @@ function AccountModal({ isOpen, onClose }) {
     setError('');
     try {
       const user = await userAPI.getCurrentUser();
-      
-      // Combine firstName and lastName into full name
-      const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ') || '';
-      
+
       const userData = {
-        name: fullName,
+        name: user.name || '',
         email: user.email || '',
         profileImage: bingsuLogo, // Backend doesn't store profile image yet
       };
@@ -49,11 +46,8 @@ function AccountModal({ isOpen, onClose }) {
         const userDataForStorage = {
           id: user.id,
           email: user.email,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          fullName: fullName,
-          name: fullName,
-          emailVerified: user.emailVerified,
+          name: user.name,
+          role: user.role,
         };
         localStorage.setItem('user', JSON.stringify(userDataForStorage));
       } catch (storageError) {
@@ -99,7 +93,9 @@ function AccountModal({ isOpen, onClose }) {
   };
 
   const handleEditProfile = () => {
-    setIsEditMode(true);
+    // ask_AA backend currently does not expose profile update endpoints.
+    setError('ยังไม่รองรับการแก้ไขโปรไฟล์ในตอนนี้');
+    setIsEditMode(false);
   };
 
   const handleCancel = () => {
@@ -113,87 +109,8 @@ function AccountModal({ isOpen, onClose }) {
   };
 
   const handleSave = async () => {
-    // Validation
-    if (!name.trim()) {
-      setError('กรุณากรอกชื่อ');
-      return;
-    }
-
-    setIsSaving(true);
-    setError('');
-    setSuccess('');
-    
-    // Split name into firstName and lastName
-    const trimmedName = name.trim();
-    if (!trimmedName) {
-      setError('กรุณากรอกชื่อ');
-      setIsSaving(false);
-      return;
-    }
-    
-    const nameParts = trimmedName.split(' ');
-    const firstName = nameParts[0];
-    const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : null;
-    
-    // Build update payload - always include firstName and lastName (can be null)
-    const updateData = {
-      firstName: firstName,
-      lastName: lastName, // Include even if null, backend accepts Optional[str]
-    };
-    
-    try {
-      // Update profile via API (uses /users/me endpoint - no user_id needed)
-      // Note: email is not updated here as it's read-only in the UI
-      const updatedUser = await userAPI.updateProfile(updateData);
-      
-      // Update local state
-      const fullName = [updatedUser.firstName, updatedUser.lastName].filter(Boolean).join(' ') || '';
-      const userData = {
-        name: fullName,
-        email: updatedUser.email || email,
-        profileImage: profileImage,
-      };
-      
-      setOriginalData(userData);
-      setName(fullName);
-      setEmail(updatedUser.email || email);
-      
-      // Update localStorage for backward compatibility
-      const storedUser = localStorage.getItem('user');
-      if (storedUser) {
-        try {
-        const user = JSON.parse(storedUser);
-          user.fullName = fullName;
-          user.name = fullName;
-          user.firstName = updatedUser.firstName;
-          user.lastName = updatedUser.lastName;
-          user.email = updatedUser.email || email;
-        user.profileImage = profileImage;
-        localStorage.setItem('user', JSON.stringify(user));
-        } catch (e) {
-          console.error('Error updating localStorage:', e);
-        }
-      }
-      
-      // Show success message
-      setSuccess('บันทึกข้อมูลเรียบร้อยแล้ว');
-      setIsEditMode(false);
-      
-      // Clear success message after 3 seconds
-      setTimeout(() => {
-        setSuccess('');
-      }, 3000);
-    } catch (error) {
-      console.error('Error saving profile:', error);
-      console.error('Error response:', error.response?.data);
-      console.error('Error response detail:', JSON.stringify(error.response?.data, null, 2));
-      console.error('Update data sent:', updateData);
-      console.error('Payload sent:', JSON.stringify(updateData, null, 2));
-      const errorMessage = getErrorMessage(error) || 'เกิดข้อผิดพลาดในการบันทึกข้อมูล';
-      setError(errorMessage);
-    } finally {
-      setIsSaving(false);
-    }
+    setError('ยังไม่รองรับการแก้ไขโปรไฟล์ในตอนนี้');
+    setIsSaving(false);
   };
 
   if (!isOpen) return null;

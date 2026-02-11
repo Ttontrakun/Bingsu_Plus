@@ -23,17 +23,12 @@ export const qdrantApiKey = process.env.QDRANT_API_KEY || "";
 export const qdrantCollectionName = process.env.QDRANT_COLLECTION || "documents";
 export const qdrantDistance = process.env.QDRANT_DISTANCE || "Cosine";
 export const qdrantTopK = Number(process.env.QDRANT_TOP_K || 6);
-// Embeddings
-// - Providers: gemini (Google GenAI), openai (OpenAI-compatible /api/v1/embeddings)
-export const embeddingProvider = (process.env.EMBEDDING_PROVIDER || "").trim().toLowerCase()
-  || (process.env.GEMINI_API_KEY ? "gemini" : "openai");
+// Embeddings: openai or gemini
+export const embeddingProvider = (process.env.EMBEDDING_PROVIDER || "openai").trim().toLowerCase();
 export const embeddingBaseUrl = (process.env.EMBEDDING_BASE_URL || "https://api.openai.com/v1").replace(/\/+$/, "");
 export const embeddingApiKey = process.env.EMBEDDING_API_KEY || "";
-// - Model name depends on provider:
-//   - gemini: e.g. "models/gemini-embedding-001"
-//   - openai: e.g. "text-embedding-3-large"
 export const embeddingModel = process.env.EMBEDDING_MODEL
-  || (embeddingProvider === "gemini" ? "models/gemini-embedding-001" : "text-embedding-3-large");
+  || (embeddingProvider === "gemini" ? "models/gemini-embedding-001" : "text-embedding-3-small");
 export const embeddingBatchSize = Number(process.env.EMBEDDING_BATCH_SIZE || 32);
 export const embeddingTimeoutMs = Number(process.env.EMBEDDING_TIMEOUT_MS || 10000);
 const parseCsvEnv = (value, fallback) => {

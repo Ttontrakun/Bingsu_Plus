@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { HiOutlineMail, HiLockClosed, HiOutlineUser, HiOutlineEye, HiOutlineEyeOff } from 'react-icons/hi';
 import ntLogo from '../assets/images/NT_Logo.png';
 import bingsuLogo from '../assets/images/หน่องบิงไม่มีพื้นละ.png';
-import { authAPI, userAPI, getErrorMessage } from '../services/api';
+import { authAPI, getErrorMessage } from '../services/api';
 
 function Auth() {
   const navigate = useNavigate();
@@ -19,7 +19,12 @@ function Auth() {
   // Form states for Sign Up
   const [signUpName, setSignUpName] = useState('');
   const [signUpEmail, setSignUpEmail] = useState('');
+  const [signUpPassword, setSignUpPassword] = useState('');
+  const [signUpConfirmPassword, setSignUpConfirmPassword] = useState('');
+  const [showSignUpPassword, setShowSignUpPassword] = useState(false);
+  const [showSignUpConfirmPassword, setShowSignUpConfirmPassword] = useState(false);
   const [signUpError, setSignUpError] = useState('');
+  const [signUpSuccess, setSignUpSuccess] = useState('');
   const [signUpLoading, setSignUpLoading] = useState(false);
 
   // Function to toggle between Sign in and Sign up
@@ -33,7 +38,12 @@ function Auth() {
   };
 
   const isSignUpValid = () => {
-    return signUpName.trim() !== '' && signUpEmail.trim() !== '';
+    return (
+      signUpName.trim() !== '' &&
+      signUpEmail.trim() !== '' &&
+      signUpPassword.trim().length >= 8 &&
+      signUpPassword === signUpConfirmPassword
+    );
   };
 
   const handleSignIn = async (e) => {
@@ -48,44 +58,22 @@ function Auth() {
     try {
       const loginResponse = await authAPI.login(signInEmail, signInPassword);
       
-      // Store user data in localStorage
+      // Store user data in localStorage (ask_AA returns { user, token })
       if (loginResponse.user) {
         const user = loginResponse.user;
-        const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ') || '';
         const userData = {
           id: user.id,
           email: user.email,
-          firstName: user.firstName,
-          lastName: user.lastName,
-          fullName: fullName,
-          name: fullName,
-          emailVerified: user.emailVerified,
+          name: user.name,
+          role: user.role,
         };
         localStorage.setItem('user', JSON.stringify(userData));
-      } else {
-        // If user data not in response, fetch it
-        try {
-          const user = await userAPI.getCurrentUser();
-          const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ') || '';
-          const userData = {
-            id: user.id,
-            email: user.email,
-            firstName: user.firstName,
-            lastName: user.lastName,
-            fullName: fullName,
-            name: fullName,
-            emailVerified: user.emailVerified,
-          };
-          localStorage.setItem('user', JSON.stringify(userData));
-        } catch (fetchError) {
-          console.error('Error fetching user data:', fetchError);
-        }
       }
       
       // Redirect to homepage
       navigate('/homepage');
     } catch (error) {
-      // Handle error
+      console.error('Login error', error?.code, error?.message, error?.response?.status);
       const errorMessage = getErrorMessage(error) || 'Login failed. Please try again.';
       setSignInError(errorMessage);
     } finally {
@@ -96,6 +84,7 @@ function Auth() {
   const handleSignUp = async (e) => {
     e.preventDefault();
     setSignUpError('');
+    setSignUpSuccess('');
     
     if (!isSignUpValid()) {
       return;
@@ -103,15 +92,14 @@ function Auth() {
 
     setSignUpLoading(true);
     try {
-      const response = await authAPI.register(signUpEmail, signUpName);
-      // Registration successful - redirect to verifying page
-      // User needs to click "Send Verification Email" button or use link from email
-      navigate('/verifying', { 
-        state: { 
-          email: signUpEmail,
-          token: response.verificationToken // Store token for development/testing
-        } 
-      });
+      await authAPI.signup(signUpName.trim(), signUpEmail.trim(), signUpPassword);
+      setSignUpSuccess('สมัครสำเร็จแล้ว กรุณาเข้าสู่ระบบ');
+      // Reset sign up form + switch to sign in
+      setSignUpName('');
+      setSignUpEmail('');
+      setSignUpPassword('');
+      setSignUpConfirmPassword('');
+      setIsSignIn(true);
     } catch (error) {
       // Handle error
       const errorMessage = getErrorMessage(error) || 'Registration failed. Please try again.';
@@ -308,6 +296,62 @@ function Auth() {
                 </div>
               </div>
 
+              <div className="mb-4 relative">
+                <label htmlFor="signup-password" className="block text-xs text-zinc-500 mb-2 transition-colors duration-400">Password</label>
+                <div className="relative">
+                  <HiLockClosed className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 transition-all duration-500 group-focus-within:text-yellow-400" />
+                  <input
+                    id="signup-password"
+                    type={showSignUpPassword ? "text" : "password"}
+                    placeholder="At least 8 characters"
+                    value={signUpPassword}
+                    onChange={(e) => setSignUpPassword(e.target.value)}
+                    required
+                    className="w-full pl-10 pr-10 py-3 rounded-lg border border-zinc-300 text-sm text-black placeholder-zinc-400 focus:outline-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-400/20 transition-all duration-500 hover:border-zinc-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSignUpPassword(!showSignUpPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 transition-colors"
+                  >
+                    {showSignUpPassword ? <HiOutlineEye className="text-xl" /> : <HiOutlineEyeOff className="text-xl" />}
+                  </button>
+                </div>
+              </div>
+
+              <div className="mb-4 relative">
+                <label htmlFor="signup-confirm-password" className="block text-xs text-zinc-500 mb-2 transition-colors duration-400">Confirm Password</label>
+                <div className="relative">
+                  <HiLockClosed className="absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 transition-all duration-500 group-focus-within:text-yellow-400" />
+                  <input
+                    id="signup-confirm-password"
+                    type={showSignUpConfirmPassword ? "text" : "password"}
+                    placeholder="Confirm your password"
+                    value={signUpConfirmPassword}
+                    onChange={(e) => setSignUpConfirmPassword(e.target.value)}
+                    required
+                    className="w-full pl-10 pr-10 py-3 rounded-lg border border-zinc-300 text-sm text-black placeholder-zinc-400 focus:outline-none focus:border-yellow-400 focus:ring-2 focus:ring-yellow-400/20 transition-all duration-500 hover:border-zinc-400"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowSignUpConfirmPassword(!showSignUpConfirmPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-zinc-600 transition-colors"
+                  >
+                    {showSignUpConfirmPassword ? <HiOutlineEye className="text-xl" /> : <HiOutlineEyeOff className="text-xl" />}
+                  </button>
+                </div>
+                {signUpConfirmPassword && signUpPassword !== signUpConfirmPassword && (
+                  <div className="mt-2 p-2 rounded-lg bg-red-50 border border-red-200">
+                    <p className="text-xs text-red-600">รหัสผ่านไม่ตรงกัน</p>
+                  </div>
+                )}
+              </div>
+
+              {signUpSuccess && (
+                <div className="mb-3 p-2 rounded-lg bg-green-50 border border-green-200">
+                  <p className="text-xs text-green-700">{signUpSuccess}</p>
+                </div>
+              )}
               {signUpError && (
                 <div className="mb-3 p-2 rounded-lg bg-red-50 border border-red-200">
                   <p className="text-xs text-red-600">{signUpError}</p>

@@ -1,152 +1,119 @@
-import { useState } from 'react';
+import { useEffect, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { 
   HiLightningBolt,
   HiPencilAlt,
-  HiOutlinePaperAirplane
+  HiOutlinePaperAirplane,
 } from 'react-icons/hi';
 import bingsuLogo from '../assets/images/หน่องบิงไม่มีพื้นละ.png';
 import Sidebar from '../components/Sidebar';
 import Dropdown from '../components/Dropdown';
+import { botsAPI, conversationsAPI, documentsAPI } from '../services/api';
+
+const STORAGE_KNOWLEDGE = 'homepage_selected_knowledge_id';
+const STORAGE_BOT = 'homepage_selected_bot_id';
+const DEFAULT_DESCRIPTION = 'บิงซูบอท (Bingsu Bot) ผู้ช่วยอัจฉริยะดิจิทัล ที่พร้อมให้บริการข้อมูลและความช่วยเหลือ แก่ประชาชนด้วยความเป็นมิตร มีประสิทธิภาพ และโปร่งใส';
+
+const HELP_KNOWLEDGE_LABEL = 'คู่มือการใช้งาน';
+const HELP_BOT_LABEL = 'บอทช่วยสอน';
+
+const HOW_TO_ITEMS = [
+  { label: 'วิธีเริ่มแชท', message: 'วิธีเริ่มแชทกับบอททำยังไง?' },
+  { label: 'การเลือก Knowledge', message: 'การเลือก Knowledge ทำยังไง?' },
+  { label: 'การสร้างบอท', message: 'การสร้างบอททำยังไง?' },
+];
 
 function Homepage() {
   const navigate = useNavigate();
   const [selectedBot, setSelectedBot] = useState(null);
+  const [selectedKnowledge, setSelectedKnowledge] = useState(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [chatInput, setChatInput] = useState('');
+  const [bots, setBots] = useState([]);
+  const [knowledgeOptions, setKnowledgeOptions] = useState([]);
+  const [loading, setLoading] = useState(false);
 
-  // ฟังก์ชันสำหรับสร้างแชทใหม่
-  const createNewChat = (firstMessage) => {
-    // ดึงแชทที่มีอยู่จาก localStorage
-    const storedChats = localStorage.getItem('chats');
-    let existingChats = [];
-    
-    if (storedChats) {
+  const botOptions = bots.map((b) => ({ value: b.id, label: b.name }));
+  const selectedBotDetails = bots.find((b) => b.id === selectedBot) || null;
+  const homepageDescription = selectedBotDetails?.description?.trim() || DEFAULT_DESCRIPTION;
+  const helpKnowledgeId = knowledgeOptions.find((o) => o.label === HELP_KNOWLEDGE_LABEL)?.value ?? null;
+  const helpBotId = botOptions.find((o) => o.label === HELP_BOT_LABEL)?.value ?? null;
+  const canUseHowTo = Boolean(helpKnowledgeId && helpBotId);
+
+  const persistKnowledge = useCallback((id) => {
+    if (id != null) localStorage.setItem(STORAGE_KNOWLEDGE, String(id));
+    else localStorage.removeItem(STORAGE_KNOWLEDGE);
+  }, []);
+  const persistBot = useCallback((id) => {
+    if (id != null) localStorage.setItem(STORAGE_BOT, String(id));
+    else localStorage.removeItem(STORAGE_BOT);
+  }, []);
+
+  useEffect(() => {
+    const bootstrap = async () => {
       try {
-        const parsed = JSON.parse(storedChats);
-        // ตรวจสอบว่าเป็น array และมีข้อมูล
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          // ตรวจสอบว่าแต่ละ chat มี id และ name ที่ valid
-          existingChats = parsed.filter(chat => 
-            chat && 
-            typeof chat === 'object' && 
-            chat.id && 
-            typeof chat.id === 'string' &&
-            chat.name &&
-            typeof chat.name === 'string'
-          );
-          
-          // ถ้า filter แล้วไม่มี chat ที่ valid ให้ใช้ default
-          if (existingChats.length === 0) {
-            existingChats = [
-              { id: 'chat-1', name: 'Chat 1' },
-              { id: 'chat-2', name: 'Chat 2' },
-              { id: 'chat-3', name: 'Chat 3' },
-            ];
-            try {
-              localStorage.setItem('chats', JSON.stringify(existingChats));
-            } catch (storageError) {
-              console.error('Error saving default chats:', storageError);
-            }
-          }
-        } else {
-          // ถ้าไม่ใช่ array หรือว่างเปล่า ให้ใช้ default chats
-          existingChats = [
-            { id: 'chat-1', name: 'Chat 1' },
-            { id: 'chat-2', name: 'Chat 2' },
-            { id: 'chat-3', name: 'Chat 3' },
-          ];
-          // บันทึก default chats ลง localStorage
-          try {
-            localStorage.setItem('chats', JSON.stringify(existingChats));
-          } catch (storageError) {
-            console.error('Error saving default chats:', storageError);
-          }
-        }
-      } catch (error) {
-        console.error('Error parsing chats:', error);
-        // ถ้า parse ไม่ได้ ให้ใช้ default chats
-        existingChats = [
-          { id: 'chat-1', name: 'Chat 1' },
-          { id: 'chat-2', name: 'Chat 2' },
-          { id: 'chat-3', name: 'Chat 3' },
-        ];
-        // บันทึก default chats ลง localStorage
-        try {
-          localStorage.setItem('chats', JSON.stringify(existingChats));
-        } catch (storageError) {
-          console.error('Error saving default chats:', storageError);
-        }
-      }
-    } else {
-      // ถ้ายังไม่มีแชทใน localStorage ให้ใช้ default chats
-      existingChats = [
-        { id: 'chat-1', name: 'Chat 1' },
-        { id: 'chat-2', name: 'Chat 2' },
-        { id: 'chat-3', name: 'Chat 3' },
-      ];
-      // บันทึก default chats ลง localStorage
-      try {
-        localStorage.setItem('chats', JSON.stringify(existingChats));
-      } catch (error) {
-        console.error('Error saving default chats:', error);
-      }
-    }
+        const [botsRes, docs] = await Promise.all([
+          botsAPI.list(),
+          documentsAPI.list(),
+        ]);
+        const botsList = botsRes || [];
+        const docsList = docs || [];
+        setBots(botsList);
+        setKnowledgeOptions(docsList.map((d) => ({ value: d.id, label: d.displayName })));
 
-    // หา chat number ที่ใหญ่ที่สุดเพื่อป้องกันการซ้ำ
-    let maxChatNumber = 0;
-    existingChats.forEach(chat => {
-      const match = chat.id.match(/^chat-(\d+)$/);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        if (num > maxChatNumber) {
-          maxChatNumber = num;
+        const savedKnowledge = localStorage.getItem(STORAGE_KNOWLEDGE);
+        const savedBot = localStorage.getItem(STORAGE_BOT);
+        if (savedKnowledge && docsList.some((d) => d.id === savedKnowledge)) {
+          setSelectedKnowledge(savedKnowledge);
         }
+        if (savedBot && botsList.some((b) => b.id === savedBot)) {
+          setSelectedBot(savedBot);
+        }
+      } catch (err) {
+        console.error('Failed to load bots/documents', err);
       }
-    });
-
-    // สร้างแชทใหม่ด้วย number ที่ไม่ซ้ำ
-    const newChatNumber = maxChatNumber + 1;
-    // Sanitize ชื่อแชท - ลบ special characters และจำกัดความยาว
-    let chatName = `Chat ${newChatNumber}`;
-    if (firstMessage && typeof firstMessage === 'string' && firstMessage.trim()) {
-      const sanitizedName = firstMessage
-        .trim()
-        .replace(/[<>]/g, '') // ลบ < และ >
-        .replace(/javascript:/gi, '') // ลบ javascript: protocol
-        .replace(/on\w+=/gi, '') // ลบ event handlers
-        .substring(0, 20);
-      chatName = sanitizedName || `Chat ${newChatNumber}`;
-      if (firstMessage.length > 20) {
-        chatName += '...';
-      }
-    }
-    
-    const newChat = {
-      id: `chat-${newChatNumber}`,
-      name: chatName
     };
+    bootstrap();
+  }, []);
 
-    // เพิ่มแชทใหม่เข้าไปในรายการ (ไม่ลบแชทเก่า)
-    const updatedChats = [...existingChats, newChat];
-    
-    // บันทึกลง localStorage
-    try {
-      localStorage.setItem('chats', JSON.stringify(updatedChats));
-    } catch (error) {
-      console.error('Error saving chat to localStorage:', error);
-      // ถ้าบันทึกไม่สำเร็จ ให้แสดง error แต่ยัง navigate ต่อไป
+  const createNewChat = async (firstMessage) => {
+    const message = (firstMessage || '').trim().slice(0, 1000);
+    if (!message) return;
+    if (!selectedKnowledge) {
+      alert('กรุณาเลือก Knowledge ก่อนเริ่มแชท');
+      return;
     }
-    
-    // ส่ง custom event เพื่อให้ Sidebar อัพเดท
-    window.dispatchEvent(new CustomEvent('chatsUpdated'));
-    
-    // Navigate ไปที่แชทใหม่พร้อมข้อความแรก
-    navigate(`/chat/${newChat.id}`, { 
-      state: { 
-        firstMessage: firstMessage 
-      } 
-    });
+    setLoading(true);
+    try {
+      const conversation = await conversationsAPI.create(selectedKnowledge, selectedBot);
+      navigate(`/chat/${conversation.id}`, {
+        state: { firstMessage: message },
+      });
+    } catch (err) {
+      console.error('Failed to create conversation', err);
+      alert('สร้างแชทไม่สำเร็จ กรุณาลองใหม่');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const startHelpChat = async (firstMessage) => {
+    if (!canUseHowTo) {
+      alert('ยังไม่มีบอทช่วยสอนในระบบ กรุณารัน seed:help-bot ที่ backend');
+      return;
+    }
+    setLoading(true);
+    try {
+      const conversation = await conversationsAPI.create(helpKnowledgeId, helpBotId);
+      navigate(`/chat/${conversation.id}`, {
+        state: { firstMessage: (firstMessage || '').trim().slice(0, 1000) },
+      });
+    } catch (err) {
+      console.error('Failed to start help chat', err);
+      alert('สร้างแชทไม่สำเร็จ กรุณาลองใหม่');
+    } finally {
+      setLoading(false);
+    }
   };
 
   // ฟังก์ชันสำหรับจัดการการส่งข้อความ
@@ -162,12 +129,6 @@ function Homepage() {
   };
 
 
-  const botOptions = [
-    { value: 'bot1', label: 'Bot 1' },
-    { value: 'bot2', label: 'Bot 2' },
-    { value: 'bot3', label: 'Bot 3' },
-  ];
-
   return (
     <div className='flex h-screen bg-white relative'>
     {/* Sidebar Component */}
@@ -177,12 +138,36 @@ function Homepage() {
     <main className={`flex-1 bg-white px-8 py-6 overflow-auto flex flex-col transition-all duration-300 ${isSidebarCollapsed ? 'pl-16' : ''}`}>
       {/* Top Bar */}
       <div className='flex justify-between items-center mb-8'>
-        <Dropdown
-          options={botOptions}
-          selectedValue={selectedBot}
-          onSelect={setSelectedBot}
-          placeholder="Select Bots"
-        />
+        <div className="flex items-center gap-3">
+          <Dropdown
+            options={knowledgeOptions}
+            selectedValue={selectedKnowledge}
+            onSelect={(id) => {
+              setSelectedKnowledge(id);
+              persistKnowledge(id);
+              const isHelpKnowledge = id === helpKnowledgeId;
+              if (isHelpKnowledge && helpBotId) {
+                setSelectedBot(helpBotId);
+                persistBot(helpBotId);
+              }
+            }}
+            placeholder="Select Knowledge"
+          />
+          <Dropdown
+            options={botOptions}
+            selectedValue={selectedBot}
+            onSelect={(id) => {
+              setSelectedBot(id);
+              persistBot(id);
+              const isHelpBot = id === helpBotId;
+              if (isHelpBot && helpKnowledgeId) {
+                setSelectedKnowledge(helpKnowledgeId);
+                persistKnowledge(helpKnowledgeId);
+              }
+            }}
+            placeholder="Select Bots (optional)"
+          />
+        </div>
         <button className='text-gray-600 text-xl cursor-pointer hover:text-gray-800 transition'>
           <HiPencilAlt />
         </button>
@@ -198,11 +183,9 @@ function Homepage() {
         {/* Title */}
         <h1 className='text-2xl font-semibold text-gray-800 mb-4'>Welcome to BingSu LLM</h1>
 
-        {/* Description */}
-        <p className='text-gray-600 text-center max-w-2xl leading-relaxed mb-10'>
-          บิงซูบอท (Bingsu Bot) ผู้ช่วยอัจฉริยะดิจิทัล<br />
-          ที่พร้อมให้บริการข้อมูลและความช่วยเหลือ<br />
-          แก่ประชาชนด้วยความเป็นมิตร มีประสิทธิภาพ และโปร่งใส
+        {/* Description — ใช้คำอธิบายของบอทที่เลือก (ตั้งใน CreateBot) */}
+        <p className='text-gray-600 text-center max-w-2xl leading-relaxed mb-10 whitespace-pre-line'>
+          {homepageDescription}
         </p>
 
         {/* Chat Input */}
@@ -238,25 +221,36 @@ function Homepage() {
             <button
               type='button'
               onClick={handleSendMessage}
-              className={`text-xl cursor-pointer transition ${chatInput.trim() ? 'text-gray-600 hover:scale-110 hover:text-gray-800' : 'text-gray-300 cursor-not-allowed'}`}
-              disabled={!chatInput.trim()}
+              className={`text-xl cursor-pointer transition ${chatInput.trim() && !loading ? 'text-gray-600 hover:scale-110 hover:text-gray-800' : 'text-gray-300 cursor-not-allowed'}`}
+              disabled={!chatInput.trim() || loading}
             >
               <HiOutlinePaperAirplane className='transform rotate-90' />
             </button>
           </div>
         </div>
 
-        {/* Suggested */}
+        {/* How To — คลิกเพื่อเปิดแชทกับบอทช่วยสอน หรือพิมพ์ถามในช่องด้านบน */}
         <div className='w-full max-w-2xl mt-8'>
           <div className='text-gray-500 text-sm mb-4 flex items-center gap-2'>
             <HiLightningBolt className='text-lg' />
             <span>How To</span>
           </div>
           <div className='flex gap-4'>
-            <div className='flex-1 h-16 bg-gray-200 rounded-xl'></div>
-            <div className='flex-1 h-16 bg-gray-200 rounded-xl'></div>
-            <div className='flex-1 h-16 bg-gray-200 rounded-xl'></div>
+            {HOW_TO_ITEMS.map((item) => (
+              <button
+                key={item.label}
+                type='button'
+                onClick={() => startHelpChat(item.message)}
+                disabled={!canUseHowTo || loading}
+                className='flex-1 h-16 rounded-xl border border-gray-300 bg-gray-50 hover:bg-gray-100 hover:border-yellow-400 transition-colors text-sm font-medium text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed'
+              >
+                {item.label}
+              </button>
+            ))}
           </div>
+          {!canUseHowTo && (
+            <p className='text-gray-400 text-xs mt-2 text-center'>เลือก Knowledge &quot;คู่มือการใช้งาน&quot; และ Bot &quot;บอทช่วยสอน&quot; แล้วพิมพ์ถามด้านบนก็ได้</p>
+          )}
         </div>
       </div>
     </main>

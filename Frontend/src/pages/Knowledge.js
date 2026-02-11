@@ -2,15 +2,14 @@ import { useNavigate } from 'react-router-dom';
 import { HiPlus, HiSearch, HiDotsHorizontal } from 'react-icons/hi';
 import Sidebar from '../components/Sidebar';
 import { useState, useRef, useEffect } from 'react';
+import { documentsAPI, getErrorMessage } from '../services/api';
 
 function Knowledge() {
   const navigate = useNavigate();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [knowledgeList, setKnowledgeList] = useState([
-    { id: 1, name: 'Knowledge Base 1', description: 'Description 1', groups: [] },
-    { id: 2, name: 'Knowledge Base 2', description: 'Description 2', groups: [] },
-  ]);
+  const [knowledgeList, setKnowledgeList] = useState([]);
+  const [error, setError] = useState('');
   const [openMenuId, setOpenMenuId] = useState(null);
   const [openGroupDropdownId, setOpenGroupDropdownId] = useState(null);
   const [isDeleteConfirmOpen, setIsDeleteConfirmOpen] = useState(false);
@@ -21,6 +20,29 @@ function Knowledge() {
   const [pendingKnowledgeId, setPendingKnowledgeId] = useState(null);
   const menuRefs = useRef({});
   const dropdownRefs = useRef({});
+
+  const loadKnowledge = async () => {
+    setError('');
+    try {
+      const docs = await documentsAPI.list();
+      const mapped = (docs || []).map((d) => ({
+        id: d.id,
+        name: d.displayName,
+        description: d.sourceFiles?.length ? `${d.sourceFiles.length} file(s)` : 'No files',
+        groups: [],
+      }));
+      setKnowledgeList(mapped);
+    } catch (err) {
+      console.error('Failed to load documents', err);
+      setError(getErrorMessage(err));
+      setKnowledgeList([]);
+    }
+  };
+
+  useEffect(() => {
+    loadKnowledge();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleMenuToggle = (e, knowledgeId) => {
     e.stopPropagation();
@@ -72,7 +94,13 @@ function Knowledge() {
 
   const handleConfirmDelete = () => {
     if (knowledgeToDelete) {
-      setKnowledgeList(knowledgeList.filter(k => k.id !== knowledgeToDelete));
+      documentsAPI
+        .remove(knowledgeToDelete)
+        .then(() => loadKnowledge())
+        .catch((err) => {
+          console.error('Failed to delete document', err);
+          setError(getErrorMessage(err));
+        });
     }
     setIsDeleteConfirmOpen(false);
     setKnowledgeToDelete(null);
@@ -134,6 +162,11 @@ function Knowledge() {
         {/* Header */}
         <div className='mb-6'>
           <h1 className='text-3xl font-bold text-gray-800 mb-4'>Knowledge</h1>
+          {error && (
+            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm px-3 py-2">
+              {error}
+            </div>
+          )}
           
           {/* Search Input */}
           <div className='relative max-w-md'>
@@ -158,46 +191,45 @@ function Knowledge() {
                   onClick={() => navigate(`/knowledge/${knowledge.id}/add-data`)}
                   className='bg-white border border-gray-200 rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer hover:border-yellow-400 relative'
                 >
-                  {/* Menu Button */}
-                  <div 
-                    className='absolute top-4 right-4'
-                    ref={(el) => menuRefs.current[knowledge.id] = el}
-                  >
-                    <button
-                      type='button'
-                      onClick={(e) => handleMenuToggle(e, knowledge.id)}
-                      className='p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors'
+                  {/* Menu Button — ไม่แสดงสำหรับคู่มือการใช้งาน (แก้ไข/ลบไม่ได้) */}
+                  {knowledge.name !== 'คู่มือการใช้งาน' && (
+                    <div 
+                      className='absolute top-4 right-4'
+                      ref={(el) => menuRefs.current[knowledge.id] = el}
                     >
-                      <HiDotsHorizontal className='text-xl' />
-                    </button>
+                      <button
+                        type='button'
+                        onClick={(e) => handleMenuToggle(e, knowledge.id)}
+                        className='p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors'
+                      >
+                        <HiDotsHorizontal className='text-xl' />
+                      </button>
 
-                    {/* Dropdown Menu */}
-                    {openMenuId === knowledge.id && (
-                      <div className='absolute right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-48'>
-                        {/* Edit Option */}
-                        <button
-                          type='button'
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setOpenMenuId(null);
-                            navigate('/create-knowledge', { state: { knowledge } });
-                          }}
-                          className='w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-200 first:rounded-t-lg text-gray-700'
-                        >
-                          แก้ไข
-                        </button>
-
-                        {/* Delete Option */}
-                        <button
-                          type='button'
-                          onClick={(e) => handleDeleteClick(e, knowledge.id)}
-                          className='w-full text-left px-4 py-3 hover:bg-red-50 text-red-600 transition-colors last:rounded-b-lg'
-                        >
-                          ลบ Knowledge
-                        </button>
-                      </div>
-                    )}
-                  </div>
+                      {/* Dropdown Menu */}
+                      {openMenuId === knowledge.id && (
+                        <div className='absolute right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-48'>
+                          <button
+                            type='button'
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setOpenMenuId(null);
+                              navigate('/create-knowledge', { state: { knowledge } });
+                            }}
+                            className='w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-200 first:rounded-t-lg text-gray-700'
+                          >
+                            แก้ไข
+                          </button>
+                          <button
+                            type='button'
+                            onClick={(e) => handleDeleteClick(e, knowledge.id)}
+                            className='w-full text-left px-4 py-3 hover:bg-red-50 text-red-600 transition-colors last:rounded-b-lg'
+                          >
+                            ลบ Knowledge
+                          </button>
+                        </div>
+                      )}
+                    </div>
+                  )}
 
                   <h3 className='text-lg font-semibold text-gray-800 mb-2 pr-8'>{knowledge.name}</h3>
                   <p className='text-sm text-gray-600 mb-4'>{knowledge.description}</p>
@@ -208,7 +240,7 @@ function Knowledge() {
                     }}
                     className='inline-flex items-center gap-2 px-2 py-1 bg-yellow-400 hover:bg-yellow-500 text-gray-800 font-medium rounded-md shadow hover:shadow-md transition-all duration-200 hover:scale-105 active:scale-95 text-sm'
                   >
-                    <span>Add Data</span>
+                    <span>Details</span>
                     <span>→</span>
                   </button>
 

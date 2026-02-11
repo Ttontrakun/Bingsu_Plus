@@ -7,6 +7,19 @@ import { invalidateUserCaches } from "../lib/cache.js";
 import { deleteBotWithCleanup } from "../services/uploadQueue.js";
 
 export const botsRouter = express.Router();
+const HELP_BOT_NAME = "บอทช่วยสอน";
+
+const formatBot = (bot) => ({
+  id: bot.id,
+  name: bot.name,
+  prompt: bot.prompt,
+  description: bot.description,
+  model: bot.model,
+  avatarUrl: bot.avatarUrl,
+  createdAt: bot.createdAt,
+  updatedAt: bot.updatedAt,
+  documents: (bot.documents || []).map((link) => link.document),
+});
 
 botsRouter.get("/", authenticate, async (req, res) => {
   const bots = await prisma.bot.findMany({
@@ -20,19 +33,21 @@ botsRouter.get("/", authenticate, async (req, res) => {
       },
     },
   });
-  res.json(
-    bots.map((bot) => ({
-      id: bot.id,
-      name: bot.name,
-      prompt: bot.prompt,
-      description: bot.description,
-      model: bot.model,
-      avatarUrl: bot.avatarUrl,
-      createdAt: bot.createdAt,
-      updatedAt: bot.updatedAt,
-      documents: bot.documents.map((link) => link.document),
-    })),
-  );
+  const hasHelpBot = bots.some((b) => b.name === HELP_BOT_NAME);
+  if (!hasHelpBot) {
+    const helpBot = await prisma.bot.findFirst({
+      where: { name: HELP_BOT_NAME },
+      include: {
+        documents: {
+          include: {
+            document: { select: { id: true, displayName: true } },
+          },
+        },
+      },
+    });
+    if (helpBot) bots.push(helpBot);
+  }
+  res.json(bots.map(formatBot));
 });
 
 botsRouter.post("/", authenticate, async (req, res) => {
@@ -121,6 +136,11 @@ botsRouter.patch("/:id", authenticate, async (req, res) => {
     return;
   }
 
+  if (bot.name === HELP_BOT_NAME) {
+    res.status(403).json({ error: "ไม่สามารถแก้ไขบอทช่วยสอนได้" });
+    return;
+  }
+
   const rawIds = Array.isArray(documentIds) ? documentIds : null;
   const ids = rawIds ? [...new Set(rawIds.filter(Boolean))] : null;
   let validIds = ids;
@@ -204,6 +224,11 @@ botsRouter.delete("/:id", authenticate, async (req, res) => {
 
     if (!bot) {
       res.status(404).json({ error: "Bot not found" });
+      return;
+    }
+
+    if (bot.name === HELP_BOT_NAME) {
+      res.status(403).json({ error: "ไม่สามารถลบบอทช่วยสอนได้" });
       return;
     }
 

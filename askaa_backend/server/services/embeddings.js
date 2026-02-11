@@ -2,27 +2,24 @@ import { GoogleGenAI } from "@google/genai";
 import { embeddingApiKey, embeddingBaseUrl, embeddingBatchSize, embeddingModel, embeddingProvider, embeddingTimeoutMs } from "../config.js";
 
 let geminiClient;
-
-const withTimeout = async (promise, ms, label) => {
-  let timeoutId;
-  const timeout = new Promise((_, reject) => {
-    timeoutId = setTimeout(() => {
-      reject(new Error(`${label} timed out.`));
-    }, ms);
-  });
-  try {
-    return await Promise.race([promise, timeout]);
-  } finally {
-    clearTimeout(timeoutId);
-  }
-};
-
 const getGeminiClient = () => {
   if (!process.env.GEMINI_API_KEY) return null;
   if (!geminiClient) {
     geminiClient = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
   }
   return geminiClient;
+};
+
+const withTimeout = async (promise, ms, label) => {
+  let timeoutId;
+  const timeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => reject(new Error(`${label} timed out.`)), ms);
+  });
+  try {
+    return await Promise.race([promise, timeout]);
+  } finally {
+    clearTimeout(timeoutId);
+  }
 };
 
 const normalizeProvider = (value) => String(value || "").trim().toLowerCase();
@@ -54,7 +51,7 @@ const embedTextsOpenAi = async (texts) => {
         "Content-Type": "application/json",
         Authorization: `Bearer ${client.apiKey}`,
       },
-      body: JSON.stringify({ model: client.model, input: inputs }),
+      body: JSON.stringify({ model: client.model, input: inputs, encoding_format: "float" }),
       signal: controller.signal,
     });
 
@@ -111,7 +108,6 @@ const embedTextsGemini = async (texts) => {
       vectors.push(arrayValues.map((value) => Number(value)));
     });
   }
-
   return vectors;
 };
 
@@ -120,5 +116,8 @@ export const embedTexts = async (texts) => {
   if (provider === "openai") {
     return embedTextsOpenAi(texts);
   }
-  return embedTextsGemini(texts);
+  if (provider === "gemini") {
+    return embedTextsGemini(texts);
+  }
+  throw new Error(`Unsupported EMBEDDING_PROVIDER="${embeddingProvider}". Use "openai" or "gemini".`);
 };

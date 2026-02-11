@@ -50,7 +50,7 @@ conversationsRouter.post("/", authenticate, async (req, res) => {
     return;
   }
 
-  const document = await prisma.document.findFirst({
+  let document = await prisma.document.findFirst({
     where: {
       id: documentId,
       OR: [
@@ -59,7 +59,12 @@ conversationsRouter.post("/", authenticate, async (req, res) => {
       ],
     },
   });
-
+  if (!document) {
+    const helpDoc = await prisma.document.findFirst({
+      where: { id: documentId, displayName: "คู่มือการใช้งาน" },
+    });
+    if (helpDoc) document = helpDoc;
+  }
   if (!document) {
     res.status(404).json({ error: "Document not found" });
     return;
@@ -68,7 +73,13 @@ conversationsRouter.post("/", authenticate, async (req, res) => {
   let bot = null;
   if (botId) {
     bot = await prisma.bot.findFirst({
-      where: { id: botId, ownerId: req.user.id },
+      where: {
+        id: botId,
+        OR: [
+          { ownerId: req.user.id },
+          { name: "บอทช่วยสอน" },
+        ],
+      },
     });
     if (!bot) {
       res.status(404).json({ error: "Bot not found" });

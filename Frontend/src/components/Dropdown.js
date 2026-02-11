@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { HiChevronDown } from 'react-icons/hi';
 
-function Dropdown({ options = [], selectedValue, onSelect, placeholder = "Select..." }) {
+function Dropdown({ options = [], selectedValue, onSelect, placeholder = "Select...", disabled = false }) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -30,8 +30,13 @@ function Dropdown({ options = [], selectedValue, onSelect, placeholder = "Select
     <div className="relative" ref={dropdownRef}>
       <button
         type="button"
-        onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center justify-between gap-2 border border-gray-300 rounded-lg px-4 py-2 text-sm bg-gray-50 cursor-pointer hover:bg-gray-100 transition-colors min-w-[150px]"
+        onClick={() => !disabled && setIsOpen(!isOpen)}
+        disabled={disabled}
+        className={`flex items-center justify-between gap-2 border border-gray-300 rounded-lg px-4 py-2 text-sm min-w-[150px] transition-colors ${
+          disabled
+            ? 'bg-gray-100 text-gray-500 cursor-not-allowed'
+            : 'bg-gray-50 text-gray-700 cursor-pointer hover:bg-gray-100'
+        }`}
       >
         <span className="text-gray-700">{selectedLabel}</span>
         <HiChevronDown 

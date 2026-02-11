@@ -2,6 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { HiPlus, HiSearch, HiDotsHorizontal } from 'react-icons/hi';
 import Sidebar from '../components/Sidebar';
 import { useState, useMemo, useRef, useEffect } from 'react';
+import { botsAPI, getErrorMessage } from '../services/api';
 
 function Bots() {
   const navigate = useNavigate();
@@ -9,6 +10,7 @@ function Bots() {
   const [searchQuery, setSearchQuery] = useState('');
   const [deleteConfirmId, setDeleteConfirmId] = useState(null);
   const [openMenuId, setOpenMenuId] = useState(null);
+  const [error, setError] = useState('');
   const menuRefs = useRef({});
 
   // Profile color variants that match the website theme
@@ -23,36 +25,21 @@ function Bots() {
 
   // Function to get consistent color for each bot based on ID
   const getBotProfileColor = (botId) => {
-    return profileColorVariants[botId % profileColorVariants.length];
+    const str = String(botId || '');
+    let hash = 0;
+    for (let i = 0; i < str.length; i += 1) {
+      hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
+    }
+    return profileColorVariants[hash % profileColorVariants.length];
   };
   
-  // Mock bot list
-  const [botList, setBotList] = useState([
-    {
-      id: 1,
-      name: 'Bot 1',
-      description: 'Description 1',
-      status: 'Active',
-    },
-    {
-      id: 2,
-      name: 'Bot 2',
-      description: 'Description 2',
-      status: 'Inactive',
-    },
-    {
-      id: 3,
-      name: 'Bot 3',
-      description: 'Description 3',
-      status: 'Active',
-    },
-  ]);
+  const [botList, setBotList] = useState([]);
 
   // Filter bots with useMemo for performance
   const filteredBots = useMemo(() => {
     return botList.filter(bot => 
       bot.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      bot.description.toLowerCase().includes(searchQuery.toLowerCase())
+      (bot.description || '').toLowerCase().includes(searchQuery.toLowerCase())
     );
   }, [botList, searchQuery]);
 
@@ -61,20 +48,35 @@ function Bots() {
     setOpenMenuId(openMenuId === botId ? null : botId);
   };
 
-  const handleStatusToggle = (e, botId) => {
-    e.stopPropagation();
-    setBotList(botList.map(bot => {
-      if (bot.id === botId) {
-        return { ...bot, status: bot.status === 'Active' ? 'Inactive' : 'Active' };
-      }
-      return bot;
-    }));
+  const loadBots = async () => {
+    setError('');
+    try {
+      const bots = await botsAPI.list();
+      setBotList(bots || []);
+    } catch (err) {
+      console.error('Failed to load bots', err);
+      setError(getErrorMessage(err));
+      setBotList([]);
+    }
   };
 
-  const handleDelete = (botId) => {
-    setBotList(botList.filter(b => b.id !== botId));
-    setDeleteConfirmId(null);
-    setOpenMenuId(null);
+  useEffect(() => {
+    loadBots();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const handleDelete = async (botId) => {
+    setError('');
+    try {
+      await botsAPI.remove(botId);
+      await loadBots();
+    } catch (err) {
+      console.error('Failed to delete bot', err);
+      setError(getErrorMessage(err));
+    } finally {
+      setDeleteConfirmId(null);
+      setOpenMenuId(null);
+    }
   };
 
   // Close menu when clicking outside
@@ -122,6 +124,11 @@ function Bots() {
         {/* Header */}
         <div className='mb-6'>
           <h1 className='text-3xl font-bold text-gray-800 mb-4'>Bots</h1>
+          {error && (
+            <div className="mb-4 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm px-3 py-2">
+              {error}
+            </div>
+          )}
           
           {/* Search Input */}
           <div className='relative max-w-md'>
@@ -143,42 +150,41 @@ function Bots() {
             <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
               {filteredBots.map(bot => (
                   <div key={bot.id} className='bg-white border border-gray-200 rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow hover:border-yellow-400 flex flex-col justify-between relative'>
-                    {/* Menu Button */}
-                    <div 
-                      className='absolute top-4 right-4'
-                      ref={(el) => menuRefs.current[bot.id] = el}
-                    >
-                      <button
-                        type='button'
-                        onClick={(e) => handleMenuToggle(e, bot.id)}
-                        className='p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors'
+                    {/* Menu Button — ไม่แสดงสำหรับบอทช่วยสอน (แก้ไข/ลบไม่ได้) */}
+                    {bot.name !== 'บอทช่วยสอน' && (
+                      <div 
+                        className='absolute top-4 right-4'
+                        ref={(el) => menuRefs.current[bot.id] = el}
                       >
-                        <HiDotsHorizontal className='text-xl' />
-                      </button>
+                        <button
+                          type='button'
+                          onClick={(e) => handleMenuToggle(e, bot.id)}
+                          className='p-1 text-gray-500 hover:text-gray-700 hover:bg-gray-100 rounded transition-colors'
+                        >
+                          <HiDotsHorizontal className='text-xl' />
+                        </button>
 
-                      {/* Dropdown Menu */}
-                      {openMenuId === bot.id && (
-                        <div className='absolute right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-48'>
-                          {/* Edit Option */}
-                          <button
-                            type='button'
-                            onClick={(e) => { e.stopPropagation(); setOpenMenuId(null); navigate('/create-bot', { state: { bot } }); }}
-                            className='w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-200 first:rounded-t-lg text-gray-700'
-                          >
-                            แก้ไข
-                          </button>
-
-                          {/* Delete Option */}
-                          <button
-                            type='button'
-                            onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(bot.id); setOpenMenuId(null); }}
-                            className='w-full text-left px-4 py-3 hover:bg-red-50 text-red-600 transition-colors last:rounded-b-lg'
-                          >
-                            ลบ Bot
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                        {/* Dropdown Menu */}
+                        {openMenuId === bot.id && (
+                          <div className='absolute right-0 mt-2 bg-white border border-gray-200 rounded-lg shadow-lg z-50 min-w-48'>
+                            <button
+                              type='button'
+                              onClick={(e) => { e.stopPropagation(); setOpenMenuId(null); navigate('/create-bot', { state: { bot } }); }}
+                              className='w-full text-left px-4 py-3 hover:bg-gray-50 transition-colors border-b border-gray-200 first:rounded-t-lg text-gray-700'
+                            >
+                              แก้ไข
+                            </button>
+                            <button
+                              type='button'
+                              onClick={(e) => { e.stopPropagation(); setDeleteConfirmId(bot.id); setOpenMenuId(null); }}
+                              className='w-full text-left px-4 py-3 hover:bg-red-50 text-red-600 transition-colors last:rounded-b-lg'
+                            >
+                              ลบ Bot
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
 
                     <div>
                       <div className='flex items-center gap-3 mb-3'>
@@ -190,25 +196,11 @@ function Bots() {
                         <h3 className='text-lg font-semibold text-gray-800'>{bot.name}</h3>
                       </div>
                       <p className='text-sm text-gray-600 mb-4'>{bot.description}</p>
-                      <div className='flex items-center justify-between'>
-                        <span className={`inline-block px-3 py-1 text-xs rounded-full font-semibold ${bot.status === 'Active' ? 'bg-green-100 text-green-700' : 'bg-gray-200 text-gray-500'}`}>{bot.status}</span>
-                        
-                        {/* Toggle Switch */}
-                      <button
-                          type='button'
-                          onClick={(e) => handleStatusToggle(e, bot.id)}
-                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors focus:outline-none focus:ring-2 focus:ring-yellow-400 focus:ring-offset-2 ${
-                            bot.status === 'Active' ? 'bg-yellow-400' : 'bg-gray-300'
-                          }`}
-                          aria-label='Toggle bot status'
-                        >
-                          <span
-                            className={`inline-block h-4 w-4 transform rounded-full bg-white transition-transform ${
-                              bot.status === 'Active' ? 'translate-x-6' : 'translate-x-1'
-                            }`}
-                          />
-                      </button>
-                      </div>
+                  <div className='flex items-center justify-between'>
+                    <span className="inline-block px-3 py-1 text-xs rounded-full font-semibold bg-green-100 text-green-700">
+                      Active
+                    </span>
+                  </div>
                     </div>
                   </div>
                 ))}

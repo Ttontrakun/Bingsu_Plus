@@ -6,7 +6,7 @@
   "scripts": {
     "dev:server": "node --watch server/index.js",
     "dev:legacy": "node --watch server/index.js",
-    "dev:fastapi": "python -m uvicorn backend.app.main:app --reload --port 5051",
+    "dev:fastapi": "python -m uvicorn backend.app.main:app --reload --host 0.0.0.0 --port 5051",
     "start:server": "node server/index.js",
     "start:worker": "node server/worker.js",
     "prisma:generate": "prisma generate",
@@ -14,6 +14,7 @@
     "prisma:migrate:dev": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "seed:admins": "node server/scripts/seed-admins.js",
+    "seed:help-bot": "node server/scripts/seed-help-bot.js",
     "reindex:documents": "node server/scripts/reindex-documents.js"
   },
   "dependencies": {

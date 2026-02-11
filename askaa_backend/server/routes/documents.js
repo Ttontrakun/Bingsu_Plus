@@ -67,6 +67,8 @@ const isPathInsideRoot = (root, candidate) => {
   return resolvedCandidate === resolvedRoot || resolvedCandidate.startsWith(rootWithSep);
 };
 
+const HELP_DOC_DISPLAY_NAME = "คู่มือการใช้งาน";
+
 documentsRouter.get("/", authenticate, async (req, res) => {
   const summary = ["1", "true", "yes"].includes(String(req.query.summary || "").toLowerCase());
   const documents = await prisma.document.findMany({
@@ -109,6 +111,16 @@ documentsRouter.get("/", authenticate, async (req, res) => {
           },
         }),
   });
+  const docIds = new Set(documents.map((d) => d.id));
+  const helpDoc = await prisma.document.findFirst({
+    where: { displayName: HELP_DOC_DISPLAY_NAME },
+    ...(summary
+      ? { select: { id: true, displayName: true, ragStoreName: true, sourceFiles: true, createdAt: true, ownerId: true, tags: true, link: true, shares: { select: { id: true, role: true, user: { select: { id: true, email: true, name: true } } } } } }
+      : { include: { shares: { select: { id: true, role: true, user: { select: { id: true, email: true, name: true } } } } } }),
+  });
+  if (helpDoc && !docIds.has(helpDoc.id)) {
+    documents.push(helpDoc);
+  }
   if (summary) {
     res.json(
       documents.map((doc) => ({
@@ -177,6 +189,11 @@ documentsRouter.delete("/:id", authenticate, async (req, res) => {
     return;
   }
 
+  if (document.displayName === HELP_DOC_DISPLAY_NAME) {
+    res.status(403).json({ error: "ไม่สามารถลบคู่มือการใช้งานได้" });
+    return;
+  }
+
   // Best-effort cleanup: remove stored original files for this document (if any)
   const localDocDir = path.join(localFilesRoot, req.user.id, document.id);
   fsPromises.rm(localDocDir, { recursive: true, force: true }).catch(() => null);
@@ -207,6 +224,11 @@ documentsRouter.patch("/:id", authenticate, async (req, res) => {
 
   if (!document) {
     res.status(404).json({ error: "Document not found" });
+    return;
+  }
+
+  if (document.displayName === HELP_DOC_DISPLAY_NAME) {
+    res.status(403).json({ error: "ไม่สามารถแก้ไขคู่มือการใช้งานได้" });
     return;
   }
 

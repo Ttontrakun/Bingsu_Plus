@@ -18,7 +18,7 @@ import ProfileModal from './ProfileModal';
 import AccountModal from './AccountModal';
 import ChatMenuModal from './ChatMenuModal';
 import ConfirmModal from './ConfirmModal';
-import { authAPI } from '../services/api';
+import { authAPI, conversationsAPI } from '../services/api';
 
 function Sidebar({ onCollapseChange }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -27,22 +27,8 @@ function Sidebar({ onCollapseChange }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Array สำหรับเก็บรายการ chats - โหลดจาก localStorage หรือใช้ default
-  const [chats, setChats] = useState(() => {
-    const storedChats = localStorage.getItem('chats');
-    if (storedChats) {
-      try {
-        return JSON.parse(storedChats);
-      } catch (error) {
-        console.error('Error parsing chats:', error);
-      }
-    }
-    return [
-      { id: 'chat-1', name: 'Chat 1' },
-      { id: 'chat-2', name: 'Chat 2' },
-      { id: 'chat-3', name: 'Chat 3' },
-    ];
-  });
+  // Chats are loaded from backend (ask_AA) conversations.
+  const [chats, setChats] = useState([]);
 
   // State สำหรับแก้ไขชื่อ chat
   const [editingChatId, setEditingChatId] = useState(null);
@@ -53,29 +39,29 @@ function Sidebar({ onCollapseChange }) {
   const [chatToDelete, setChatToDelete] = useState(null);
 
 
-  // ฟังก์ชันสำหรับเริ่มแก้ไขชื่อ chat
-  const startEditingChat = (chatId, currentName, e) => {
-    if (e) e.stopPropagation();
-    setEditingChatId(chatId);
-    setEditingName(currentName);
-    setOpenMenuId(null);
+  const loadChats = async () => {
+    try {
+      const conversations = await conversationsAPI.list();
+      const mapped = (conversations || []).map((c) => ({
+        id: c.id,
+        name: c.title || c.lastMessage || c.document?.displayName || 'New chat',
+      }));
+      setChats(mapped);
+    } catch (error) {
+      console.error('Failed to load conversations', error);
+      setChats([]);
+    }
   };
+
+  useEffect(() => {
+    loadChats();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // ฟังก์ชันสำหรับบันทึกชื่อ chat ที่แก้ไข
   const saveChatName = (chatId, e) => {
     e.stopPropagation();
-    if (editingName.trim()) {
-      const updatedChats = chats.map(chat => 
-        chat.id === chatId 
-          ? { ...chat, name: editingName.trim() }
-          : chat
-      );
-      setChats(updatedChats);
-      // บันทึกลง localStorage
-      localStorage.setItem('chats', JSON.stringify(updatedChats));
-      // Trigger custom event เพื่ออัพเดท Chat page
-      window.dispatchEvent(new Event('chatUpdated'));
-    }
+    // Backend does not support renaming conversation titles right now.
     setEditingChatId(null);
     setEditingName('');
   };
@@ -96,40 +82,26 @@ function Sidebar({ onCollapseChange }) {
   };
 
   const handleConfirmDelete = () => {
-    if (chatToDelete) {
-      const updatedChats = chats.filter(chat => chat.id !== chatToDelete);
-      setChats(updatedChats);
-      localStorage.setItem('chats', JSON.stringify(updatedChats));
-      window.dispatchEvent(new Event('chatUpdated'));
-      
-      // ถ้า chat ที่ลบเป็น chat ที่กำลังเปิดอยู่ ให้ navigate ไปที่ homepage
-      if (location.pathname === `/chat/${chatToDelete}`) {
-        navigate('/homepage');
-      }
-      setChatToDelete(null);
-    }
+    if (!chatToDelete) return;
+    conversationsAPI
+      .remove(chatToDelete)
+      .then(() => loadChats())
+      .catch((err) => console.error('Failed to delete conversation', err))
+      .finally(() => {
+        if (location.pathname === `/chat/${chatToDelete}`) {
+          navigate('/homepage');
+        }
+        setChatToDelete(null);
+      });
   };
 
-  // ฟัง event เมื่อมีการสร้างแชทใหม่จากหน้า homepage
+  // Refresh list when navigating between routes (cheap "real-time" update)
   useEffect(() => {
-    const handleChatsUpdated = () => {
-      const storedChats = localStorage.getItem('chats');
-      if (storedChats) {
-        try {
-          const updatedChats = JSON.parse(storedChats);
-          setChats(updatedChats);
-        } catch (error) {
-          console.error('Error parsing chats:', error);
-        }
-      }
-    };
-
-    window.addEventListener('chatsUpdated', handleChatsUpdated);
-    
-    return () => {
-      window.removeEventListener('chatsUpdated', handleChatsUpdated);
-    };
-  }, []);
+    if (!isCollapsed) {
+      loadChats();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [location.pathname, isCollapsed]);
 
   // ฟังก์ชันสำหรับเปิด/ปิดเมนู
   const toggleMenu = (chatId, e) => {
@@ -357,8 +329,7 @@ function Sidebar({ onCollapseChange }) {
           setIsAccountModalOpen(true);
         }}
         onSignOut={() => {
-          authAPI.logout();
-          navigate('/auth');
+          authAPI.logout().finally(() => navigate('/auth'));
         }}
       />
 
@@ -374,10 +345,6 @@ function Sidebar({ onCollapseChange }) {
           key={chat.id}
           isOpen={openMenuId === chat.id}
           onClose={() => setOpenMenuId(null)}
-          onEdit={(e) => {
-            startEditingChat(chat.id, chat.name, e);
-            setOpenMenuId(null);
-          }}
           onDelete={(e) => deleteChat(chat.id, e)}
           position={menuPosition}
         />

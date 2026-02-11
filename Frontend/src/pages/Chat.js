@@ -9,6 +9,15 @@ import {
 } from 'react-icons/hi';
 import { HiChatBubbleLeftRight } from 'react-icons/hi2';
 import bingsuLogo from '../assets/images/หน่องบิงไม่มีพื้นละ.png';
+import { chatAPI, getErrorMessage, messagesAPI, subscriptionAPI } from '../services/api';
+
+function getSourcesFromGrounding(groundingChunks) {
+  if (!Array.isArray(groundingChunks)) return [];
+  const names = groundingChunks
+    .map((g) => g?.retrievedContext?.title ?? g?.payload?.fileName)
+    .filter(Boolean);
+  return [...new Set(names)];
+}
 
 function Chat() {
   const { chatId } = useParams();
@@ -17,123 +26,91 @@ function Chat() {
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [chatInput, setChatInput] = useState('');
   const [isTyping, setIsTyping] = useState(false);
-  const [chatName, setChatName] = useState(`Chat ${chatId}`);
+  const [isRevealing, setIsRevealing] = useState(false);
+  const [chatName] = useState(`Chat`);
   const messagesEndRef = useRef(null);
   const textareaRef = useRef(null);
+  const firstMessageSentRef = useRef(false);
+  const [error, setError] = useState('');
+  const revealTimerRef = useRef(null);
+  const [usage, setUsage] = useState(null);
 
-  // ดึงชื่อ chat จาก localStorage หรือใช้ default
+  const clearRevealTimer = () => {
+    if (revealTimerRef.current) {
+      clearInterval(revealTimerRef.current);
+      revealTimerRef.current = null;
+    }
+  };
+
   useEffect(() => {
-    const loadChatName = () => {
-      const storedChats = localStorage.getItem('chats');
-      if (storedChats) {
-        try {
-          const chats = JSON.parse(storedChats);
-          const currentChat = chats.find(chat => chat.id === chatId);
-          if (currentChat) {
-            setChatName(currentChat.name);
-          } else {
-            setChatName(`Chat ${chatId}`);
-          }
-        } catch (error) {
-          console.error('Error parsing chats:', error);
-          setChatName(`Chat ${chatId}`);
-        }
-      } else {
-        setChatName(`Chat ${chatId}`);
-      }
-    };
-
-    loadChatName();
-
-    // Listen for storage changes (when chat name is updated in Sidebar)
-    const handleStorageChange = (e) => {
-      if (e.key === 'chats') {
-        loadChatName();
-      }
-    };
-
-    window.addEventListener('storage', handleStorageChange);
-    
-    // Also listen for custom event (for same-window updates)
-    const handleChatUpdate = () => {
-      loadChatName();
-    };
-    window.addEventListener('chatUpdated', handleChatUpdate);
-
     return () => {
-      window.removeEventListener('storage', handleStorageChange);
-      window.removeEventListener('chatUpdated', handleChatUpdate);
+      clearRevealTimer();
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Load usage (tokens) for display
+  const fetchUsage = async () => {
+    try {
+      const data = await subscriptionAPI.get();
+      setUsage({
+        used: data?.usage?.totalTokens ?? 0,
+        limit: data?.plan?.dailyTokenLimit ?? 0,
+      });
+    } catch {
+      setUsage(null);
+    }
+  };
+
+  useEffect(() => {
+    fetchUsage();
+  }, [chatId]);
+
+  // Load messages from backend
+  useEffect(() => {
+    const load = async () => {
+      if (!chatId) return;
+      setError('');
+      try {
+        const msgs = await messagesAPI.list(chatId, 50);
+        const formatted = (msgs || []).map((m) => ({
+          id: m.id,
+          text: m.content,
+          sender: m.role === 'user' ? 'user' : 'bot',
+          timestamp: new Date(m.createdAt || Date.now()),
+          sources: m.role === 'model' ? getSourcesFromGrounding(m.groundingChunks) : undefined,
+        }));
+        setMessages(formatted.length ? formatted : [
+          { id: 'welcome', text: 'สวัสดีครับ! มีอะไรให้ช่วยไหมครับ?', sender: 'bot', timestamp: new Date() },
+        ]);
+      } catch (err) {
+        console.error('Failed to load messages', err);
+        setError(getErrorMessage(err));
+        setMessages([
+          { id: 'welcome', text: 'สวัสดีครับ! มีอะไรให้ช่วยไหมครับ?', sender: 'bot', timestamp: new Date() },
+        ]);
+      }
+    };
+    load();
   }, [chatId]);
   
   const [messages, setMessages] = useState([]);
-  const [hasInitialized, setHasInitialized] = useState(false);
-
-  // เก็บ timeout reference เพื่อ cleanup เมื่อ component unmount
-  const typingTimeoutRef = useRef(null);
-
-  // Reset messages และ initialization เมื่อเปลี่ยน chatId
+  // Auto-send first message once (when navigating from homepage)
   useEffect(() => {
-    // Clear any pending timeouts
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = null;
-    }
-    setMessages([]);
-    setHasInitialized(false);
-    setIsTyping(false);
-  }, [chatId]);
-
-  // ตรวจสอบว่ามี firstMessage จาก homepage หรือไม่
-  useEffect(() => {
-    if (hasInitialized) return; // ป้องกันการทำงานซ้ำ
-    
     const firstMessage = location.state?.firstMessage;
-    if (firstMessage) {
-      // เพิ่มข้อความแรกจากผู้ใช้
-      const userMessage = {
-        id: 1,
-        text: firstMessage,
-        sender: 'user',
-        timestamp: new Date()
-      };
-      setMessages([userMessage]);
-      setHasInitialized(true);
-      
-      // Simulate bot typing และตอบกลับ
-      setIsTyping(true);
-      const timeoutId = setTimeout(() => {
-        setIsTyping(false);
-        setMessages([userMessage, {
-          id: 2,
-          text: 'ขอบคุณสำหรับข้อความครับ ฉันจะช่วยคุณในเร็วๆ นี้',
-          sender: 'bot',
-          timestamp: new Date()
-        }]);
-      }, 1500);
-      
-      // Clear location.state เพื่อไม่ให้แสดงข้อความซ้ำเมื่อ refresh
-      window.history.replaceState({}, document.title);
-      
-      return () => clearTimeout(timeoutId);
-    } else {
-      // ถ้าไม่มี firstMessage ให้แสดง welcome message
-      setMessages([
-    { 
-      id: 1, 
-      text: 'สวัสดีครับ! มีอะไรให้ช่วยไหมคะ?', 
-      sender: 'bot',
-      timestamp: new Date(Date.now() - 300000)
-        }
-      ]);
-      setHasInitialized(true);
-    }
-  }, [chatId, location.state, hasInitialized]);
+    if (!chatId || !firstMessage || firstMessageSentRef.current) return;
+    firstMessageSentRef.current = true;
+    // Clear state to avoid re-sending on refresh
+    window.history.replaceState({}, document.title);
+    void handleSendMessageInternal(firstMessage);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chatId]);
 
   // Auto-scroll to bottom when messages change
   useEffect(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, [messages, isTyping]);
+    const behavior = isTyping || isRevealing ? 'auto' : 'smooth';
+    messagesEndRef.current?.scrollIntoView({ behavior });
+  }, [messages, isTyping, isRevealing]);
 
   // Format timestamp
   const formatTime = (date) => {
@@ -155,65 +132,85 @@ function Chat() {
     });
   };
 
-  const handleSendMessage = (e) => {
-    e.preventDefault();
-    const messageText = chatInput.trim();
-    
-    if (!messageText) return;
-    
-    // Clear input immediately
-      setChatInput('');
-      
-      // Reset textarea height
-      if (textareaRef.current) {
-        textareaRef.current.style.height = 'auto';
-      }
-    
-    // Clear previous timeout if exists
-    if (typingTimeoutRef.current) {
-      clearTimeout(typingTimeoutRef.current);
-      typingTimeoutRef.current = null;
-    }
-    
-    // ใช้ timestamp สำหรับ id เพื่อป้องกันการซ้ำ
-    const messageId = Date.now();
+  const handleSendMessageInternal = async (text) => {
+    const messageText = String(text || '').trim();
+    if (!messageText || !chatId) return;
+    setError('');
+
+    // Clear input UI
+    setChatInput('');
+    if (textareaRef.current) textareaRef.current.style.height = 'auto';
+
     const newMessage = {
-      id: messageId,
+      id: `local-${Date.now()}`,
       text: messageText,
       sender: 'user',
-      timestamp: new Date()
+      timestamp: new Date(),
     };
-    
-    // เพิ่มข้อความผู้ใช้ทันที
-    setMessages(prev => [...prev, newMessage]);
-      
-      // Simulate bot typing
-      setIsTyping(true);
-    
-    // สร้างข้อความตอบกลับหลังจาก 1.5 วินาที
-    typingTimeoutRef.current = setTimeout(() => {
-      const botMessageId = Date.now() + Math.random(); // ใช้ timestamp + random เพื่อป้องกันการซ้ำ
-      const botMessage = {
-        id: botMessageId,
-          text: 'ขอบคุณสำหรับข้อความครับ ฉันจะช่วยคุณในเร็วๆ นี้',
-          sender: 'bot',
-          timestamp: new Date()
-      };
-      
-      setIsTyping(false);
-      setMessages(prev => [...prev, botMessage]);
-      typingTimeoutRef.current = null;
-      }, 1500);
-  };
+    setMessages((prev) => [...prev, newMessage]);
+    setIsTyping(true);
+    clearRevealTimer();
 
-  // Cleanup timeout เมื่อ component unmount หรือ chatId เปลี่ยน
-  useEffect(() => {
-    return () => {
-      if (typingTimeoutRef.current) {
-        clearTimeout(typingTimeoutRef.current);
+    try {
+      const result = await chatAPI.chat(chatId, messageText);
+      fetchUsage();
+      const fullReply = result.reply || 'ขออภัยครับ ระบบตอบกลับไม่ได้ในตอนนี้';
+      const botId = result.messageId || `bot-${Date.now()}`;
+      const sources = getSourcesFromGrounding(result.groundingChunks || []);
+
+      // Add an empty bot message first, then reveal it gradually (typewriter effect)
+      setMessages((prev) => [
+        ...prev,
+        { id: botId, text: '', sender: 'bot', timestamp: new Date(), sources },
+      ]);
+
+      // Small "thinking" pause to feel natural
+      await new Promise((r) => setTimeout(r, 150));
+
+      setIsRevealing(true);
+      await new Promise((resolve) => {
+        const textToReveal = String(fullReply);
+        if (!textToReveal) {
+          setIsRevealing(false);
+          resolve();
+          return;
+        }
+
+        // Tune speed by length to avoid taking too long on big replies
+        const total = textToReveal.length;
+        const step = total > 1200 ? 12 : total > 400 ? 6 : 2; // chars per tick
+        const intervalMs = total > 1200 ? 12 : 18;
+        let idx = 0;
+
+        revealTimerRef.current = setInterval(() => {
+          idx = Math.min(total, idx + step);
+          const partial = textToReveal.slice(0, idx);
+          setMessages((prev) =>
+            prev.map((m) => (m.id === botId ? { ...m, text: partial, sources: m.sources } : m))
+          );
+          if (idx >= total) {
+            clearRevealTimer();
+            setIsRevealing(false);
+            resolve();
+          }
+        }, intervalMs);
+      });
+    } catch (err) {
+      console.error('Chat failed', err);
+      setError(getErrorMessage(err));
+      setMessages((prev) => [
+        ...prev,
+        { id: `err-${Date.now()}`, text: 'ขออภัยครับ เกิดข้อผิดพลาด กรุณาลองใหม่', sender: 'bot', timestamp: new Date() },
+      ]);
+    } finally {
+      setIsTyping(false);
     }
   };
-  }, [chatId]);
+
+  const handleSendMessage = (e) => {
+    e.preventDefault();
+    return handleSendMessageInternal(chatInput);
+  };
 
   const adjustTextareaHeight = () => {
     if (textareaRef.current) {
@@ -243,14 +240,31 @@ function Chat() {
               <h1 className='text-base font-medium text-gray-800'>{chatName}</h1>
             </div>
           </div>
-          <button className='text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg p-2 transition-all'>
-            <HiRefresh className='text-xl' />
-          </button>
+          <div className='flex items-center gap-2'>
+            {usage != null && (
+              <span
+                className='text-xs text-gray-500 bg-gray-100 px-2.5 py-1.5 rounded-lg'
+                title='Token ที่ใช้วันนี้ (รายวัน)'
+              >
+                {usage.limit > 0
+                  ? `Token: ${usage.used.toLocaleString()} / ${usage.limit.toLocaleString()}`
+                  : `Token: ${usage.used.toLocaleString()} (วันนี้)`}
+              </span>
+            )}
+            <button className='text-gray-600 hover:text-gray-800 hover:bg-gray-100 rounded-lg p-2 transition-all'>
+              <HiRefresh className='text-xl' />
+            </button>
+          </div>
         </div>
 
         {/* Messages Area - Centered like ChatGPT/Gemini */}
         <div className='flex-1 overflow-y-auto'>
           <div className='max-w-3xl mx-auto px-4 sm:px-6 py-8'>
+            {error && (
+              <div className="mb-4 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm px-3 py-2">
+                {error}
+              </div>
+            )}
             {messages.length === 0 ? (
               // Empty state - Welcome message
               <div className='flex flex-col items-center justify-center h-full min-h-[60vh]'>
@@ -297,6 +311,11 @@ function Chat() {
                               <p className='text-[15px] leading-relaxed whitespace-pre-wrap break-words'>
                                 {message.text}
                               </p>
+                              {message.sender === 'bot' && message.sources?.length > 0 && (
+                                <p className='mt-2 pt-2 border-t border-gray-100 text-xs text-gray-500'>
+                                  อ้างอิงจาก: {message.sources.join(', ')}
+                                </p>
+                              )}
                             </div>
                           </div>
                         </div>

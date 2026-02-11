@@ -1,27 +1,22 @@
-import { useNavigate } from 'react-router-dom';
-import { HiArrowLeft, HiChatAlt2, HiX, HiSearch, HiCheck, HiChevronDown } from 'react-icons/hi';
+import { useLocation, useNavigate } from 'react-router-dom';
+import { HiArrowLeft, HiChatAlt2, HiX, HiSearch, HiCheck } from 'react-icons/hi';
 import Sidebar from '../components/Sidebar';
-import Dropdown from '../components/Dropdown';
-import { useState, useEffect, useRef } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { botsAPI, documentsAPI, getErrorMessage } from '../services/api';
 
 function CreateBot() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
-  // รับ state จากหน้า Bots
-  const botState = (typeof window !== 'undefined' && window.history && window.history.state && window.history.state.usr && window.history.state.usr.bot) ? window.history.state.usr.bot : null;
+  const botState = location?.state?.bot || null;
+  const isEditing = Boolean(botState?.id);
+
   const [botName, setBotName] = useState(botState?.name || '');
-  const [modelId, setModelId] = useState(botState?.modelId || '');
+  const [modelId, setModelId] = useState(botState?.model || '');
   const [description, setDescription] = useState(botState?.description || '');
-  const [systemPrompt, setSystemPrompt] = useState(botState?.systemPrompt || '');
-
-  const baseModelOptions = [
-    { value: 'Model1', label: 'Model 1' },
-    { value: 'Model2', label: 'Model 2' },
-    { value: 'Model3', label: 'Model 3' },
-  ];
-
-  // Set default value to first option
-  const [selectedBaseModel, setSelectedBaseModel] = useState(baseModelOptions[0]?.value || null);
+  const [systemPrompt, setSystemPrompt] = useState(botState?.prompt || '');
+  const [error, setError] = useState('');
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Knowledge states
   const [selectedKnowledge, setSelectedKnowledge] = useState([]);
@@ -31,22 +26,7 @@ function CreateBot() {
   const [knowledgeSearchQuery, setKnowledgeSearchQuery] = useState('');
   const knowledgeModalRef = useRef(null);
 
-  // Group states
-  const [selectedGroups, setSelectedGroups] = useState([]);
-  const [isGroupDropdownOpen, setIsGroupDropdownOpen] = useState(false);
-  const groupDropdownRef = useRef(null);
-
-  // Mock data - replace with actual API calls
-  const knowledgeList = [
-    { id: 1, name: 'Knowledge 1', description: 'Description 1' },
-    { id: 2, name: 'Knowledge 2', description: 'Description 2' },
-  ];
-
-  const groupList = [
-    { id: 1, name: 'Group 1', description: 'Group description 1' },
-    { id: 2, name: 'Group 2', description: 'Group description 2' },
-    { id: 3, name: 'Group 3', description: 'Group description 3' },
-  ];
+  const [knowledgeList, setKnowledgeList] = useState([]);
 
   const handleAddKnowledge = (knowledge) => {
     // Toggle selection - if already selected, remove it; if not, add it
@@ -86,17 +66,6 @@ function CreateBot() {
     setIsConfirmCloseModalOpen(false);
   };
 
-  const handleGroupToggle = (group) => {
-    setSelectedGroups((prev) => {
-      const exists = prev.find((g) => g.id === group.id);
-      return exists ? prev.filter((g) => g.id !== group.id) : [...prev, group];
-    });
-  };
-
-  const handleRemoveGroup = (groupId) => {
-    setSelectedGroups((prev) => prev.filter((g) => g.id !== groupId));
-  };
-
   // Open modal and initialize temp selection
   const openKnowledgeModal = () => {
     setTempSelectedKnowledge(selectedKnowledge);
@@ -120,33 +89,84 @@ function CreateBot() {
     };
   }, [isKnowledgeModalOpen]);
 
-  // Close group dropdown when clicking outside
   useEffect(() => {
-    if (!isGroupDropdownOpen) return;
+    // Load knowledge list from backend
+    const loadKnowledge = async () => {
+      setError('');
+      try {
+        const docs = await documentsAPI.list();
+        const mapped = (docs || []).map((d) => ({
+          id: d.id,
+          name: d.displayName,
+          description: d.sourceFiles?.length ? `${d.sourceFiles.length} file(s)` : 'No files',
+        }));
+        setKnowledgeList(mapped);
 
-    const handleClickOutside = (event) => {
-      if (groupDropdownRef.current && !groupDropdownRef.current.contains(event.target)) {
-        setIsGroupDropdownOpen(false);
+        // Initialize selected knowledge when editing
+        const initialSelected = (botState?.documents || []).map((d) => ({
+          id: d.id,
+          name: d.displayName,
+          description: '',
+        }));
+        setSelectedKnowledge(initialSelected);
+        setTempSelectedKnowledge(initialSelected);
+      } catch (err) {
+        console.error('Failed to load knowledge list', err);
+        setError(getErrorMessage(err));
+        setKnowledgeList([]);
       }
     };
 
-      document.addEventListener('mousedown', handleClickOutside);
+    loadKnowledge();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
-    return () => {
-      document.removeEventListener('mousedown', handleClickOutside);
-    };
-  }, [isGroupDropdownOpen]);
+  const filteredKnowledgeList = useMemo(() => {
+    const q = knowledgeSearchQuery.trim().toLowerCase();
+    if (!q) return knowledgeList;
+    return knowledgeList.filter((knowledge) =>
+      knowledge.name.toLowerCase().includes(q) ||
+      (knowledge.description || '').toLowerCase().includes(q)
+    );
+  }, [knowledgeList, knowledgeSearchQuery]);
 
-  const filteredKnowledgeList = knowledgeList.filter((knowledge) =>
-    knowledge.name.toLowerCase().includes(knowledgeSearchQuery.toLowerCase()) ||
-    knowledge.description.toLowerCase().includes(knowledgeSearchQuery.toLowerCase())
-  );
-
-  const handleSubmit = (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
-    // Handle bot creation logic here
-    // After creation, navigate back to bots page
-    navigate('/bots');
+    setError('');
+
+    const name = botName.trim();
+    const prompt = systemPrompt.trim();
+    if (!name) {
+      setError('กรุณากรอกชื่อบอต');
+      return;
+    }
+    if (!prompt) {
+      setError('กรุณากรอกระบบพรอมต์');
+      return;
+    }
+
+    const payload = {
+      name,
+      prompt,
+      description: description?.trim() || null,
+      model: modelId?.trim() || null,
+      documentIds: selectedKnowledge.map((k) => k.id),
+    };
+
+    setIsSubmitting(true);
+    try {
+      if (isEditing) {
+        await botsAPI.update(botState.id, payload);
+      } else {
+        await botsAPI.create(payload);
+      }
+      navigate('/bots');
+    } catch (err) {
+      console.error('Failed to save bot', err);
+      setError(getErrorMessage(err));
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   return (
@@ -166,6 +186,11 @@ function CreateBot() {
         </button>
 
         <form onSubmit={handleSubmit} className='flex-1 max-w-4xl'>
+          {error && (
+            <div className="mb-6 rounded-lg border border-red-200 bg-red-50 text-red-700 text-sm px-3 py-2">
+              {error}
+            </div>
+          )}
           {/* Bot Profile Section */}
           <div className='mb-8'>
             <div className='flex items-start gap-4 mb-4'>
@@ -201,19 +226,6 @@ function CreateBot() {
                 </div>
               </div>
             </div>
-          </div>
-
-          {/* Base Model Section */}
-          <div className='mb-8'>
-            <label className='block text-sm font-medium text-gray-700 mb-3'>
-              Select Models
-            </label>
-            <Dropdown
-              options={baseModelOptions}
-              selectedValue={selectedBaseModel}
-              onSelect={setSelectedBaseModel}
-              placeholder="Select Bots"
-            />
           </div>
 
           {/* Description Section */}
@@ -291,75 +303,6 @@ function CreateBot() {
             )}
           </div>
 
-          {/* Grouping Section */}
-          <div className='mb-8'>
-            <label className='block text-md font-medium text-gray-700 mb-3'>
-              การจัดกลุ่ม
-            </label>
-            <p className='text-sm text-gray-600 mb-4'>
-              หากต้องการเชื่อมต่อบอตกับกลุ่มผู้ใช้ ให้เพิ่มกลุ่มผู้ใช้ที่นี่
-            </p>
-            <div className='relative' ref={groupDropdownRef}>
-              <button
-                type='button'
-                onClick={() => setIsGroupDropdownOpen(!isGroupDropdownOpen)}
-                className='w-full max-w-md px-4 py-3 bg-white border border-gray-300 rounded-lg text-left flex items-center justify-between hover:border-gray-400 transition-colors'
-              >
-                <span className={selectedGroups.length > 0 ? 'text-gray-800' : 'text-gray-400'}>
-                  {selectedGroups.length > 0 ? `เลือกแล้ว ${selectedGroups.length} กลุ่ม` : 'เลือกกลุ่ม'}
-                </span>
-                <HiChevronDown className={`text-gray-500 transition-transform ${isGroupDropdownOpen ? 'rotate-180' : ''}`} />
-              </button>
-              
-              {isGroupDropdownOpen && (
-                <div className='absolute z-50 w-full max-w-md mt-2 bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-y-auto'>
-                  {groupList.map((group) => (
-                    <button
-                      key={group.id}
-                      type='button'
-                      onClick={() => handleGroupToggle(group)}
-                      className={`w-full text-left px-4 py-3 transition-colors border-b border-gray-200 last:border-b-0 flex items-start justify-between gap-3 ${
-                        selectedGroups.find((g) => g.id === group.id) ? 'bg-yellow-50 hover:bg-yellow-100' : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      <div>
-                        <p className='font-medium text-gray-800'>{group.name}</p>
-                        <p className='text-sm text-gray-600'>{group.description}</p>
-                      </div>
-                      {selectedGroups.find((g) => g.id === group.id) && (
-                        <HiCheck className='text-yellow-500 text-lg flex-shrink-0 mt-1' />
-                      )}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {selectedGroups.length > 0 && (
-              <div className='mt-4 space-y-2'>
-                <p className='text-sm font-medium text-gray-700'>กลุ่มที่เลือก:</p>
-                <div className='flex flex-wrap gap-2'>
-                  {selectedGroups.map((group) => (
-                    <div
-                      key={group.id}
-                      className='flex items-center gap-2 px-3 py-2 bg-yellow-100 border border-yellow-300 rounded-lg'
-                    >
-                      <span className='text-sm font-medium text-gray-800'>{group.name}</span>
-                      <button
-                        type='button'
-                        onClick={() => handleRemoveGroup(group.id)}
-                        className='flex items-center justify-center text-gray-600 hover:text-red-600 transition-colors'
-                        title='Remove group'
-                      >
-                        <HiX className='text-lg' />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-          </div>
-
           {/* Submit Buttons */}
           <div className='flex gap-4 pt-4 border-t border-gray-200'>
             <button
@@ -371,9 +314,10 @@ function CreateBot() {
             </button>
             <button
               type='submit'
-              className='px-6 py-2 bg-yellow-400 hover:bg-yellow-500 text-gray-800 font-semibold rounded-lg shadow-md hover:shadow-lg transition-all duration-200 hover:scale-105 active:scale-95'
+              disabled={isSubmitting}
+              className={`px-6 py-2 bg-yellow-400 hover:bg-yellow-500 text-gray-800 font-semibold rounded-lg shadow-md hover:shadow-lg transition-all duration-200 hover:scale-105 active:scale-95 ${isSubmitting ? 'opacity-60 cursor-not-allowed' : ''}`}
             >
-              Submit
+              {isSubmitting ? 'Saving…' : (isEditing ? 'Save' : 'Create')}
             </button>
           </div>
         </form>

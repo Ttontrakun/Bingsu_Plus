@@ -60,16 +60,18 @@ function ChatMenuModal({ isOpen, onClose, onEdit, onDelete, position }) {
         style={modalStyle}
         onClick={(e) => e.stopPropagation()}
       >
-        <button
-          onClick={(e) => {
-            e.stopPropagation();
-            onEdit(e);
-          }}
-          className='w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 transition-colors'
-        >
-          <HiPencilAlt className='text-base' />
-          <span>แก้ไขชื่อ</span>
-        </button>
+        {typeof onEdit === 'function' && (
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onEdit(e);
+            }}
+            className='w-full text-left px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 flex items-center gap-2 transition-colors'
+          >
+            <HiPencilAlt className='text-base' />
+            <span>แก้ไขชื่อ</span>
+          </button>
+        )}
         <button
           onClick={(e) => {
             e.stopPropagation();
