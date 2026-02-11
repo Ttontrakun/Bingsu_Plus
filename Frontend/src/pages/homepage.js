@@ -207,11 +207,6 @@ function Homepage() {
         {/* Title */}
         <h1 className='text-2xl font-semibold text-gray-800 mb-4'>Welcome to BingSu LLM</h1>
 
-        {/* กำลังโหลดรายการ — แสดงเมื่อดึง Knowledge/Bot ยังไม่เสร็จ */}
-        {loadingOptions && (
-          <p className='text-amber-600 text-sm mb-2'>กำลังโหลดรายการ Knowledge และ Bot...</p>
-        )}
-
         {/* Description — ใช้คำอธิบายของบอทที่เลือก (ตั้งใน CreateBot) */}
         <p className='text-gray-600 text-center max-w-2xl leading-relaxed mb-10 whitespace-pre-line'>
           {homepageDescription}
