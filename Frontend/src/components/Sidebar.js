@@ -19,6 +19,7 @@ import AccountModal from './AccountModal';
 import ChatMenuModal from './ChatMenuModal';
 import ConfirmModal from './ConfirmModal';
 import { authAPI, conversationsAPI } from '../services/api';
+import { listCache } from '../lib/listCache';
 
 function Sidebar({ onCollapseChange }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -27,8 +28,8 @@ function Sidebar({ onCollapseChange }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Chats are loaded from backend (ask_AA) conversations.
-  const [chats, setChats] = useState([]);
+  // Chats are loaded from backend (ask_AA) conversations. เริ่มจากแคชเพื่อไม่โหลด
+  const [chats, setChats] = useState(() => listCache.getConversations() || []);
 
   // State สำหรับแก้ไขชื่อ chat
   const [editingChatId, setEditingChatId] = useState(null);
@@ -47,6 +48,7 @@ function Sidebar({ onCollapseChange }) {
         name: c.title || c.lastMessage || c.document?.displayName || 'New chat',
       }));
       setChats(mapped);
+      listCache.setConversations(mapped);
     } catch (error) {
       console.error('Failed to load conversations', error);
       setChats([]);
@@ -95,11 +97,9 @@ function Sidebar({ onCollapseChange }) {
       });
   };
 
-  // Refresh list when navigating between routes (cheap "real-time" update)
+  // โหลดล่าสุดในพื้นหลังเมื่อสลับ route (แคชแสดงจาก state เริ่มต้นแล้ว)
   useEffect(() => {
-    if (!isCollapsed) {
-      loadChats();
-    }
+    if (!isCollapsed) loadChats();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [location.pathname, isCollapsed]);
 

@@ -9,6 +9,7 @@ import bingsuLogo from '../assets/images/หน่องบิงไม่มี
 import Sidebar from '../components/Sidebar';
 import Dropdown from '../components/Dropdown';
 import { botsAPI, conversationsAPI, documentsAPI } from '../services/api';
+import { listCache } from '../lib/listCache';
 
 const STORAGE_KNOWLEDGE = 'homepage_selected_knowledge_id';
 const STORAGE_BOT = 'homepage_selected_bot_id';
@@ -29,9 +30,15 @@ function Homepage() {
   const [selectedKnowledge, setSelectedKnowledge] = useState(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [chatInput, setChatInput] = useState('');
-  const [bots, setBots] = useState([]);
-  const [knowledgeOptions, setKnowledgeOptions] = useState([]);
+  const [bots, setBots] = useState(() => listCache.getBots() || []);
+  const [knowledgeOptions, setKnowledgeOptions] = useState(() => {
+    const docs = listCache.getDocuments();
+    return (docs || []).map((d) => ({ value: d.id, label: d.displayName }));
+  });
   const [loading, setLoading] = useState(false);
+  const [loadingOptions, setLoadingOptions] = useState(
+    () => !(listCache.getBots()?.length && listCache.getDocuments()?.length)
+  );
 
   const botOptions = bots.map((b) => ({ value: b.id, label: b.name }));
   const selectedBotDetails = bots.find((b) => b.id === selectedBot) || null;
@@ -50,7 +57,18 @@ function Homepage() {
   }, []);
 
   useEffect(() => {
+    const cachedDocs = listCache.getDocuments();
+    const cachedBots = listCache.getBots();
+    if (cachedBots?.length && cachedDocs?.length) {
+      const savedKnowledge = localStorage.getItem(STORAGE_KNOWLEDGE);
+      const savedBot = localStorage.getItem(STORAGE_BOT);
+      if (savedKnowledge && cachedDocs.some((d) => d.id === savedKnowledge)) setSelectedKnowledge(savedKnowledge);
+      if (savedBot && cachedBots.some((b) => b.id === savedBot)) setSelectedBot(savedBot);
+    }
+
     const bootstrap = async () => {
+      const hasCache = cachedBots?.length && cachedDocs?.length;
+      if (!hasCache) setLoadingOptions(true);
       try {
         const [botsRes, docs] = await Promise.all([
           botsAPI.list(),
@@ -60,6 +78,8 @@ function Homepage() {
         const docsList = docs || [];
         setBots(botsList);
         setKnowledgeOptions(docsList.map((d) => ({ value: d.id, label: d.displayName })));
+        listCache.setBots(botsList);
+        listCache.setDocuments(docsList);
 
         const savedKnowledge = localStorage.getItem(STORAGE_KNOWLEDGE);
         const savedBot = localStorage.getItem(STORAGE_BOT);
@@ -71,6 +91,8 @@ function Homepage() {
         }
       } catch (err) {
         console.error('Failed to load bots/documents', err);
+      } finally {
+        setLoadingOptions(false);
       }
     };
     bootstrap();
@@ -151,7 +173,8 @@ function Homepage() {
                 persistBot(helpBotId);
               }
             }}
-            placeholder="Select Knowledge"
+            placeholder={loadingOptions ? 'กำลังโหลด Knowledge...' : 'Select Knowledge'}
+            disabled={loadingOptions}
           />
           <Dropdown
             options={botOptions}
@@ -165,7 +188,8 @@ function Homepage() {
                 persistKnowledge(helpKnowledgeId);
               }
             }}
-            placeholder="Select Bots (optional)"
+            placeholder={loadingOptions ? 'กำลังโหลด Bot...' : 'Select Bots (optional)'}
+            disabled={loadingOptions}
           />
         </div>
         <button className='text-gray-600 text-xl cursor-pointer hover:text-gray-800 transition'>
@@ -182,6 +206,11 @@ function Homepage() {
 
         {/* Title */}
         <h1 className='text-2xl font-semibold text-gray-800 mb-4'>Welcome to BingSu LLM</h1>
+
+        {/* กำลังโหลดรายการ — แสดงเมื่อดึง Knowledge/Bot ยังไม่เสร็จ */}
+        {loadingOptions && (
+          <p className='text-amber-600 text-sm mb-2'>กำลังโหลดรายการ Knowledge และ Bot...</p>
+        )}
 
         {/* Description — ใช้คำอธิบายของบอทที่เลือก (ตั้งใน CreateBot) */}
         <p className='text-gray-600 text-center max-w-2xl leading-relaxed mb-10 whitespace-pre-line'>
@@ -221,8 +250,8 @@ function Homepage() {
             <button
               type='button'
               onClick={handleSendMessage}
-              className={`text-xl cursor-pointer transition ${chatInput.trim() && !loading ? 'text-gray-600 hover:scale-110 hover:text-gray-800' : 'text-gray-300 cursor-not-allowed'}`}
-              disabled={!chatInput.trim() || loading}
+              className={`text-xl cursor-pointer transition ${chatInput.trim() && !loading && !loadingOptions ? 'text-gray-600 hover:scale-110 hover:text-gray-800' : 'text-gray-300 cursor-not-allowed'}`}
+              disabled={!chatInput.trim() || loading || loadingOptions}
             >
               <HiOutlinePaperAirplane className='transform rotate-90' />
             </button>
@@ -241,7 +270,7 @@ function Homepage() {
                 key={item.label}
                 type='button'
                 onClick={() => startHelpChat(item.message)}
-                disabled={!canUseHowTo || loading}
+                disabled={!canUseHowTo || loading || loadingOptions}
                 className='flex-1 h-16 rounded-xl border border-gray-300 bg-gray-50 hover:bg-gray-100 hover:border-yellow-400 transition-colors text-sm font-medium text-gray-700 disabled:opacity-50 disabled:cursor-not-allowed'
               >
                 {item.label}

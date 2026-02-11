@@ -19,6 +19,9 @@ function getSourcesFromGrounding(groundingChunks) {
   return [...new Set(names)];
 }
 
+/** แคชข้อความต่อ conversation — เปิดแชทเดิมจะแสดงทันทีโดยไม่รอ API */
+const messagesCache = new Map();
+
 function Chat() {
   const { chatId } = useParams();
   const navigate = useNavigate();
@@ -34,6 +37,16 @@ function Chat() {
   const [error, setError] = useState('');
   const revealTimerRef = useRef(null);
   const [usage, setUsage] = useState(null);
+  const [messages, setMessagesState] = useState([]);
+  const [messagesLoading, setMessagesLoading] = useState(false);
+
+  const setMessages = (updater) => {
+    setMessagesState((prev) => {
+      const next = typeof updater === 'function' ? updater(prev) : updater;
+      if (chatId && Array.isArray(next)) messagesCache.set(chatId, next);
+      return next;
+    });
+  };
 
   const clearRevealTimer = () => {
     if (revealTimerRef.current) {
@@ -66,11 +79,19 @@ function Chat() {
     fetchUsage();
   }, [chatId]);
 
-  // Load messages from backend
+  // โหลดข้อความ: แสดงจากแคชทันที (ถ้ามี) แล้วดึงจาก API ในพื้นหลัง
   useEffect(() => {
+    if (!chatId) return;
+    setError('');
+    const cached = messagesCache.get(chatId);
+    if (cached && cached.length > 0) {
+      setMessagesState(cached);
+    } else {
+      setMessagesState([]);
+    }
+
     const load = async () => {
-      if (!chatId) return;
-      setError('');
+      setMessagesLoading(true);
       try {
         const msgs = await messagesAPI.list(chatId, 50);
         const formatted = (msgs || []).map((m) => ({
@@ -80,21 +101,25 @@ function Chat() {
           timestamp: new Date(m.createdAt || Date.now()),
           sources: m.role === 'model' ? getSourcesFromGrounding(m.groundingChunks) : undefined,
         }));
-        setMessages(formatted.length ? formatted : [
+        const toSet = formatted.length ? formatted : [
           { id: 'welcome', text: 'สวัสดีครับ! มีอะไรให้ช่วยไหมครับ?', sender: 'bot', timestamp: new Date() },
-        ]);
+        ];
+        setMessagesState(toSet);
+        messagesCache.set(chatId, toSet);
       } catch (err) {
         console.error('Failed to load messages', err);
         setError(getErrorMessage(err));
-        setMessages([
+        const fallback = [
           { id: 'welcome', text: 'สวัสดีครับ! มีอะไรให้ช่วยไหมครับ?', sender: 'bot', timestamp: new Date() },
-        ]);
+        ];
+        setMessagesState(fallback);
+        messagesCache.set(chatId, fallback);
+      } finally {
+        setMessagesLoading(false);
       }
     };
     load();
   }, [chatId]);
-  
-  const [messages, setMessages] = useState([]);
   // Auto-send first message once (when navigating from homepage)
   useEffect(() => {
     const firstMessage = location.state?.firstMessage;
@@ -266,13 +291,17 @@ function Chat() {
               </div>
             )}
             {messages.length === 0 ? (
-              // Empty state - Welcome message
+              // Empty state หรือกำลังโหลด (ครั้งแรกที่เปิดแชท)
               <div className='flex flex-col items-center justify-center h-full min-h-[60vh]'>
                 <div className='mb-6'>
                   <img src={bingsuLogo} alt="BingSu" className='w-20 h-20 rounded-full object-cover shadow-lg' />
                 </div>
                 <h2 className='text-2xl font-semibold text-gray-800 mb-2'>BingSu Chat</h2>
-                <p className='text-gray-500 text-center mb-8'>เริ่มสนทนากับบอตของคุณ</p>
+                {messagesLoading ? (
+                  <p className='text-gray-500 text-center mb-8'>กำลังโหลดประวัติสนทนา...</p>
+                ) : (
+                  <p className='text-gray-500 text-center mb-8'>เริ่มสนทนากับบอตของคุณ</p>
+                )}
               </div>
             ) : (
               <div className='space-y-6'>

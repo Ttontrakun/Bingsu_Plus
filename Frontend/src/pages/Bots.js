@@ -3,6 +3,7 @@ import { HiPlus, HiSearch, HiDotsHorizontal } from 'react-icons/hi';
 import Sidebar from '../components/Sidebar';
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { botsAPI, getErrorMessage } from '../services/api';
+import { listCache } from '../lib/listCache';
 
 function Bots() {
   const navigate = useNavigate();
@@ -33,7 +34,7 @@ function Bots() {
     return profileColorVariants[hash % profileColorVariants.length];
   };
   
-  const [botList, setBotList] = useState([]);
+  const [botList, setBotList] = useState(() => listCache.getBots() || []);
 
   // Filter bots with useMemo for performance
   const filteredBots = useMemo(() => {
@@ -52,7 +53,9 @@ function Bots() {
     setError('');
     try {
       const bots = await botsAPI.list();
-      setBotList(bots || []);
+      const list = bots || [];
+      setBotList(list);
+      listCache.setBots(list);
     } catch (err) {
       console.error('Failed to load bots', err);
       setError(getErrorMessage(err));

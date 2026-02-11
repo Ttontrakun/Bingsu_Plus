@@ -3,12 +3,21 @@ import { HiPlus, HiSearch, HiDotsHorizontal } from 'react-icons/hi';
 import Sidebar from '../components/Sidebar';
 import { useState, useRef, useEffect } from 'react';
 import { documentsAPI, getErrorMessage } from '../services/api';
+import { listCache } from '../lib/listCache';
+
+const mapDocsToList = (docs) =>
+  (docs || []).map((d) => ({
+    id: d.id,
+    name: d.displayName,
+    description: d.sourceFiles?.length ? `${d.sourceFiles.length} file(s)` : 'No files',
+    groups: [],
+  }));
 
 function Knowledge() {
   const navigate = useNavigate();
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [knowledgeList, setKnowledgeList] = useState([]);
+  const [knowledgeList, setKnowledgeList] = useState(() => mapDocsToList(listCache.getDocuments()));
   const [error, setError] = useState('');
   const [openMenuId, setOpenMenuId] = useState(null);
   const [openGroupDropdownId, setOpenGroupDropdownId] = useState(null);
@@ -25,13 +34,9 @@ function Knowledge() {
     setError('');
     try {
       const docs = await documentsAPI.list();
-      const mapped = (docs || []).map((d) => ({
-        id: d.id,
-        name: d.displayName,
-        description: d.sourceFiles?.length ? `${d.sourceFiles.length} file(s)` : 'No files',
-        groups: [],
-      }));
+      const mapped = mapDocsToList(docs);
       setKnowledgeList(mapped);
+      listCache.setDocuments(docs);
     } catch (err) {
       console.error('Failed to load documents', err);
       setError(getErrorMessage(err));
