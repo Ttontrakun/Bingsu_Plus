@@ -3,7 +3,7 @@ import { HiPlus, HiSearch, HiDotsHorizontal } from 'react-icons/hi';
 import Sidebar from '../components/Sidebar';
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { botsAPI, getErrorMessage } from '../services/api';
-import { listCache } from '../lib/listCache';
+import { listCache } from '../utils/listCache';
 
 function Bots() {
   const navigate = useNavigate();

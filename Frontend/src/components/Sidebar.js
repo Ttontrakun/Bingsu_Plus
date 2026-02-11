@@ -19,7 +19,7 @@ import AccountModal from './AccountModal';
 import ChatMenuModal from './ChatMenuModal';
 import ConfirmModal from './ConfirmModal';
 import { authAPI, conversationsAPI } from '../services/api';
-import { listCache } from '../lib/listCache';
+import { listCache } from '../utils/listCache';
 
 function Sidebar({ onCollapseChange }) {
   const [isCollapsed, setIsCollapsed] = useState(false);

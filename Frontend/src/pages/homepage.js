@@ -9,7 +9,7 @@ import bingsuLogo from '../assets/images/หน่องบิงไม่มี
 import Sidebar from '../components/Sidebar';
 import Dropdown from '../components/Dropdown';
 import { botsAPI, conversationsAPI, documentsAPI } from '../services/api';
-import { listCache } from '../lib/listCache';
+import { listCache } from '../utils/listCache';
 
 const STORAGE_KNOWLEDGE = 'homepage_selected_knowledge_id';
 const STORAGE_BOT = 'homepage_selected_bot_id';
