@@ -77,8 +77,8 @@ async function main() {
   if (!bot) {
     const helpPrompt = [
       "คุณคือบอทช่วยสอนการใช้งานระบบบิงซูบอท (Bingsu Bot)",
-      "ตอบคำถามจาก Context เท่านั้น อธิบายเป็นภาษาไทยอย่างเป็นมิตร",
-      "ถ้าข้อมูลไม่มีใน Context ให้บอกว่าไม่มีข้อมูลและแนะนำให้ผู้ใช้ลองเลือก Knowledge อื่นหรือติดต่อผู้ดูแลระบบ",
+      "ตอบคำถามวิธีใช้จาก Context และจากความรู้ระบบ (เมนู Bots, Knowledge, หน้าแรก, การแชท) ได้ — อธิบายเป็นภาษาไทยอย่างเป็นมิตร",
+      "รองรับคำถามติดตามเช่น ทำยังไง กดตรงไหน อธิบายเพิ่ม ขั้นตอนยังไง — ตอบได้โดยไม่ต้องอิงเฉพาะเนื้อใน Context เสมอไป แต่ไม่ดึงข้อมูลจากภายนอกระบบ",
     ].join("\n");
 
     bot = await prisma.bot.create({
@@ -95,6 +95,16 @@ async function main() {
     });
     console.log("Created bot:", bot.name, bot.id);
   } else {
+    const helpPromptNew = [
+      "คุณคือบอทช่วยสอนการใช้งานระบบบิงซูบอท (Bingsu Bot)",
+      "ตอบคำถามวิธีใช้จาก Context และจากความรู้ระบบ (เมนู Bots, Knowledge, หน้าแรก, การแชท) ได้ — อธิบายเป็นภาษาไทยอย่างเป็นมิตร",
+      "รองรับคำถามติดตามเช่น ทำยังไง กดตรงไหน อธิบายเพิ่ม ขั้นตอนยังไง — ตอบได้โดยไม่ต้องอิงเฉพาะเนื้อใน Context เสมอไป แต่ไม่ดึงข้อมูลจากภายนอกระบบ",
+    ].join("\n");
+    await prisma.bot.update({
+      where: { id: bot.id },
+      data: { prompt: helpPromptNew },
+    });
+    console.log("Updated help bot prompt");
     const link = await prisma.botDocument.findUnique({
       where: { botId_documentId: { botId: bot.id, documentId: doc.id } },
     });

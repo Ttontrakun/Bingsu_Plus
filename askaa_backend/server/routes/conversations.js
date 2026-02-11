@@ -14,11 +14,26 @@ import { buildContextPiecesWithNeighbors } from "../services/text.js";
 import { retrieveGroundingChunks } from "../services/rag.js";
 import { callOpenAiGateway, isGreeting, isGreetingOnly } from "../services/chat.js";
 import { getOrCreateUsageDaily } from "../services/usage.js";
-import { CONTEXT_NEIGHBOR_WINDOW, FREE_DAILY_TOKEN_LIMIT, GREETING_REPLY, MAX_CONTEXT_PIECES, MAX_DAILY_CHAT_MESSAGES } from "../config.js";
+import { CONTEXT_NEIGHBOR_WINDOW, FREE_DAILY_TOKEN_LIMIT, GREETING_REPLY, MAX_CHAT_HISTORY_MESSAGES, MAX_CONTEXT_PIECES, MAX_DAILY_CHAT_MESSAGES } from "../config.js";
 
 export const conversationsRouter = express.Router();
 export const messagesRouter = express.Router();
 export const chatRouter = express.Router();
+
+const HELP_BOT_NAME = "บอทช่วยสอน";
+
+/** ความรู้เกี่ยวกับระบบ (สำหรับบอทช่วยสอนเท่านั้น — ใช้ตอบคำถามวิธีใช้โดยไม่ดึงข้อมูลภายนอก) */
+const HELP_BOT_SYSTEM_KNOWLEDGE = `
+คุณคือบอทช่วยสอนการใช้งานระบบบิงซูบอท (Bingsu Bot) ผู้ใช้สามารถถามวิธีใช้ ขั้นตอน กดตรงไหน อธิบายเพิ่มเติม ได้เสมือนคุณเข้าใจทั้งระบบ
+
+ความรู้เกี่ยวกับระบบ (ใช้ตอบเมื่อผู้ใช้ถามวิธีใช้):
+- หน้าแรก: มี dropdown "Select Knowledge" สำหรับเลือกชุดความรู้, dropdown "Select Bot" สำหรับเลือกบอท (ถ้ามีหลายตัว), และช่องพิมพ์คำถามด้านล่าง — เลือก Knowledge กับ Bot แล้วพิมพ์คำถามแล้วกดส่งหรือ Enter เพื่อเริ่มแชท
+- เมนู Bots (แถบด้านข้าง): ใช้สร้างบอทใหม่ — กด "สร้างบอท" หรือ "Create Bot", ใส่ชื่อบอท, พรอมต์ (คำสั่งให้บอทปฏิบัติ), คำอธิบายสั้น ๆ, และเลือก Knowledge ที่บอทนี้จะใช้ตอบคำถาม
+- เมนู Knowledge (แถบด้านข้าง): ใช้สร้างชุดความรู้ — สร้าง Knowledge แล้วอัปโหลดไฟล์ (เช่น PDF) ระบบจะประมวลผลและใช้เป็นฐานความรู้ให้บอทค้นคำตอบ
+- การแชท: เลือก Knowledge และ Bot ที่หน้าแรก แล้วพิมพ์คำถาม — ระบบจะสร้างบทสนทนาใหม่และพาไปหน้าแชท
+- คำถามติดตาม: ถ้าผู้ใช้ถามว่า "ทำยังไง" "กดตรงไหน" "อธิบายเพิ่ม" "ขั้นตอนละเอียด" — อธิบายเป็นขั้นตอนชัดเจนเป็นภาษาไทย โดยอิงจากความรู้ระบบด้านบนและจาก Context (คู่มือ) เมื่อมี
+ห้ามดึงข้อมูลจากภายนอกระบบ (ข่าว, วิกิ ฯลฯ) — ตอบเฉพาะเรื่องการใช้งานระบบและจาก Context ที่ให้มาเท่านั้น
+`.trim();
 
 const PLATFORM_VALUES = new Set(["line", "messenger", "website", "api", "sandbox"]);
 const getPlatform = (req) => {
@@ -367,27 +382,40 @@ chatRouter.post("/", authenticate, async (req, res) => {
     neighborWindow: Number.isFinite(CONTEXT_NEIGHBOR_WINDOW) ? CONTEXT_NEIGHBOR_WINDOW : 0,
   });
   const contextText = contextPieces.join("\n\n---\n\n");
+  const isHelpBot = conversation.bot?.name === HELP_BOT_NAME;
 
-  const policyPrompt = [
-    "You are a polite, friendly Thai AI assistant.",
-    "Rules:",
-    "1) Greetings are allowed (e.g. สวัสดี, ขอบคุณ).",
-    "2) Answer ONLY using the given Context. Do not use outside knowledge, do not guess.",
-    "2.1) Read the Context first, then answer in natural Thai. Paraphrase and summarize in your own words.",
-    "2.2) Do NOT copy long passages from Context. If you must quote, quote ONLY short phrases (<= 20 words) and put them in quotes.",
-    "3) If the answer is not in Context, reply exactly: \"ขออภัยครับ ข้อมูลส่วนนี้ไม่มีอยู่ในฐานข้อมูลของผม\"",
-    "4) If the user asks general questions outside the knowledge, respond with the same refusal.",
-    "Do not ask the user to read the manual; answer directly from Context.",
-  ].join("\n");
+  const policyPrompt = isHelpBot
+    ? [
+        "You are a helpful Thai AI that teaches users how to use the Bingsu Bot system.",
+        "Rules:",
+        "1) Use the System Knowledge below to answer usage questions (how to create bot, where to click, steps, explain more, what is this).",
+        "2) When Context from the user guide is provided, use it to enrich your answer. You may combine System Knowledge + Context.",
+        "3) Answer follow-up questions (ทำยังไง, กดตรงไหน, อธิบายเพิ่ม, ขั้นตอนยังไง) clearly in Thai, step by step if needed.",
+        "4) Do NOT use information from outside this system (no web, news, wiki). Only System Knowledge + Context.",
+        "5) Be friendly and concise. If the user does not understand, explain in simpler words or break into smaller steps.",
+      ].join("\n")
+    : [
+        "You are a polite, friendly Thai AI assistant. Answer in Thai.",
+        "Rules:",
+        "1) Greetings are allowed (e.g. สวัสดี, ขอบคุณ).",
+        "2) Base your answer on the given Context. Do not use outside knowledge or guess.",
+        "2.1) Read the Context first, then answer in natural Thai. Paraphrase and summarize in your own words.",
+        "2.2) Do NOT copy long passages from Context. If you must quote, quote ONLY short phrases (<= 20 words) and put them in quotes.",
+        "3) Use the conversation history (previous messages) to understand follow-up questions (e.g. อธิบายเพิ่ม, ทำยังไง, คืออะไร, ขั้นตอนยังไง, กดตรงไหน). Answer based on Context and what you already said — explain more clearly or in steps if the user asks.",
+        "4) If the answer is not in Context and cannot be inferred from the conversation, reply exactly: \"ขออภัยครับ ข้อมูลส่วนนี้ไม่มีอยู่ในฐานข้อมูลของผม\"",
+        "5) Do not introduce information from outside the Context or the conversation.",
+      ].join("\n");
 
-  const systemPrompt = [
+  const systemParts = [
     conversation.bot?.prompt ? `Bot prompt:\n${conversation.bot.prompt}` : null,
     policyPrompt,
-  ]
-    .filter(Boolean)
-    .join("\n\n");
+  ];
+  if (isHelpBot) {
+    systemParts.push(`System Knowledge (use this to answer usage questions):\n${HELP_BOT_SYSTEM_KNOWLEDGE}`);
+  }
+  const systemPrompt = systemParts.filter(Boolean).join("\n\n");
 
-  if (!contextText && !isGreeting(message)) {
+  if (!contextText && !isHelpBot && !isGreeting(message)) {
     const fallbackReply = "ขออภัยครับ ข้อมูลส่วนนี้ไม่มีอยู่ในฐานข้อมูลของผม";
     res.json({ reply: fallbackReply, groundingChunks: [] });
     void (async () => {
@@ -421,9 +449,29 @@ chatRouter.post("/", authenticate, async (req, res) => {
     return;
   }
 
+  const historyLimit = Math.max(0, Number.isFinite(MAX_CHAT_HISTORY_MESSAGES) ? MAX_CHAT_HISTORY_MESSAGES : 20);
+  const historyRows =
+    historyLimit > 0
+      ? await prisma.message.findMany({
+          where: { conversationId },
+          orderBy: { createdAt: "desc" },
+          take: historyLimit,
+          select: { role: true, content: true },
+        })
+      : [];
+  const historyMessages = historyRows
+    .reverse()
+    .map((m) => ({
+      role: m.role === "model" ? "assistant" : "user",
+      content: String(m.content ?? "").trim(),
+    }))
+    .filter((m) => m.content.length > 0);
+
+  const contextLabel = isHelpBot ? "Context (from user guide)" : "Context";
   const messages = [
     { role: "system", content: systemPrompt },
-    ...(contextText ? [{ role: "system", content: `Context:\n${contextText}` }] : []),
+    ...(contextText ? [{ role: "system", content: `${contextLabel}:\n${contextText}` }] : []),
+    ...historyMessages,
     { role: "user", content: message },
   ];
 

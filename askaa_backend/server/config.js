@@ -136,6 +136,8 @@ export const RATE_LIMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS || 6
 export const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX || 120);
 export const MAX_DAILY_UPLOAD_BYTES = Number(process.env.MAX_DAILY_UPLOAD_BYTES || 2_000_000_000);
 export const MAX_DAILY_CHAT_MESSAGES = Number(process.env.MAX_DAILY_CHAT_MESSAGES || 2000);
+/** จำนวนข้อความย้อนหลังที่ส่งให้โมเดล (user+model คู่) เพื่อให้จดจำบริบทบทสนทนา */
+export const MAX_CHAT_HISTORY_MESSAGES = Math.max(0, Math.floor(parseNumberEnv(process.env.MAX_CHAT_HISTORY_MESSAGES, 20)));
 export const FREE_DAILY_TOKEN_LIMIT = Math.max(0, Math.floor(parseNumberEnv(process.env.FREE_DAILY_TOKEN_LIMIT, 50_000)));
 export const FREE_KNOWLEDGE_LIMIT = Math.max(0, Math.floor(parseNumberEnv(process.env.FREE_KNOWLEDGE_LIMIT, 30)));
 
