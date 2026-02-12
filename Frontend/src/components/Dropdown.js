@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from 'react';
 import { HiChevronDown } from 'react-icons/hi';
 
-function Dropdown({ options = [], selectedValue, onSelect, placeholder = "Select...", disabled = false }) {
+function Dropdown({ options = [], selectedValue, onSelect, placeholder = "Select...", disabled = false, selectedLabel: selectedLabelOverride }) {
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef(null);
 
@@ -24,7 +24,9 @@ function Dropdown({ options = [], selectedValue, onSelect, placeholder = "Select
     setIsOpen(false);
   };
 
-  const selectedLabel = options.find(opt => opt.value === selectedValue)?.label || placeholder;
+  const selectedLabel = selectedLabelOverride != null && selectedLabelOverride !== ''
+    ? selectedLabelOverride
+    : (options.find(opt => opt.value === selectedValue)?.label || placeholder);
 
   return (
     <div className="relative" ref={dropdownRef}>

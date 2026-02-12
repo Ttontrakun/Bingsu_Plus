@@ -18,15 +18,30 @@ import ProfileModal from './ProfileModal';
 import AccountModal from './AccountModal';
 import ChatMenuModal from './ChatMenuModal';
 import ConfirmModal from './ConfirmModal';
-import { authAPI, conversationsAPI } from '../services/api';
+import { authAPI, conversationsAPI, getAvatarUrl } from '../services/api';
 import { listCache } from '../utils/listCache';
 
 function Sidebar({ onCollapseChange }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
   const [isAccountModalOpen, setIsAccountModalOpen] = useState(false);
+  const [profileAvatarError, setProfileAvatarError] = useState(false);
   const navigate = useNavigate();
   const location = useLocation();
+
+  const profileAvatarUrl = (() => {
+    try {
+      const u = localStorage.getItem('user');
+      const p = u ? JSON.parse(u) : null;
+      return p?.avatarUrl ? getAvatarUrl(p.avatarUrl) : null;
+    } catch (_) {
+      return null;
+    }
+  })();
+
+  useEffect(() => {
+    if (!isAccountModalOpen) setProfileAvatarError(false);
+  }, [isAccountModalOpen]);
 
   // Chats are loaded from backend (ask_AA) conversations. เริ่มจากแคชเพื่อไม่โหลด
   const [chats, setChats] = useState(() => listCache.getConversations() || []);
@@ -165,7 +180,7 @@ function Sidebar({ onCollapseChange }) {
         className={`flex items-center gap-2 mb-6 pb-6 border-b border-gray-300 cursor-pointer hover:opacity-80 transition-all duration-300 ease-in-out ${
           isCollapsed ? 'opacity-0 overflow-hidden' : 'opacity-100'
         }`}
-        onClick={() => navigate('/homepage')}
+        onClick={() => navigate('/homepage', { state: { resetSelection: true } })}
       >
         <img src={bingsuLogo} alt="logo" className='w-10 h-10 rounded-full object-cover flex-shrink-0' />
         <span className='text-orange-500 font-bold text-lg whitespace-nowrap'>BingSu</span>
@@ -178,7 +193,7 @@ function Sidebar({ onCollapseChange }) {
         {/* Fixed Navigation Items */}
         <div className='flex flex-col gap-6 flex-shrink-0'>
         <div 
-          onClick={() => navigate('/homepage')}
+          onClick={() => navigate('/homepage', { state: { resetSelection: true } })}
           className={`nav-item ${isActive('/homepage') ? 'nav-item-active' : 'nav-item-inactive'} hover:bg-gray-300 active:bg-gray-400 cursor-pointer rounded-lg transition-colors w-full py-1 px-2`}
         >
           <HiHome className='text-xl flex-shrink-0' />
@@ -217,7 +232,7 @@ function Sidebar({ onCollapseChange }) {
           <div className='flex flex-col gap-2 flex-1 min-h-0 overflow-hidden'>
             {/* New Chat Button */}
             <button
-              onClick={() => navigate('/homepage')}
+              onClick={() => navigate('/homepage', { state: { fromNewChat: true } })}
               className='w-full py-2 px-3 mb-2 bg-gray-300 hover:bg-gray-400 active:bg-gray-500 text-gray-700 font-medium rounded-lg transition-colors flex items-center justify-center gap-2 flex-shrink-0'
             >
               <HiChat className='text-lg' />
@@ -315,8 +330,17 @@ function Sidebar({ onCollapseChange }) {
         }`}
         onClick={() => setIsProfileModalOpen(true)}
       >
-        <div className='w-10 h-10 bg-white rounded-full flex items-center justify-center flex-shrink-0'>
-          <HiOutlineUser className='text-gray-600 text-xl' />
+        <div className='w-10 h-10 bg-white rounded-full flex items-center justify-center flex-shrink-0 overflow-hidden shadow-sm ring-1 ring-gray-200'>
+          {profileAvatarUrl && !profileAvatarError ? (
+            <img
+              src={profileAvatarUrl}
+              alt=''
+              className='w-full h-full object-cover'
+              onError={() => setProfileAvatarError(true)}
+            />
+          ) : (
+            <HiOutlineUser className='text-gray-600 text-xl' />
+          )}
         </div>
         {!isCollapsed && <span className='text-gray-700 whitespace-nowrap'>Profile</span>}
       </div>

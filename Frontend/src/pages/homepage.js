@@ -1,5 +1,5 @@
-import { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import { useNavigate, useLocation } from 'react-router-dom';
 import { 
   HiLightningBolt,
   HiPencilAlt,
@@ -8,6 +8,7 @@ import {
 import bingsuLogo from '../assets/images/หน่องบิงไม่มีพื้นละ.png';
 import Sidebar from '../components/Sidebar';
 import Dropdown from '../components/Dropdown';
+import { showToast } from '../components/ToastNotification';
 import { botsAPI, conversationsAPI, documentsAPI } from '../services/api';
 import { listCache } from '../utils/listCache';
 
@@ -26,6 +27,7 @@ const HOW_TO_ITEMS = [
 
 function Homepage() {
   const navigate = useNavigate();
+  const location = useLocation();
   const [selectedBot, setSelectedBot] = useState(null);
   const [selectedKnowledge, setSelectedKnowledge] = useState(null);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -47,6 +49,44 @@ function Homepage() {
   const helpBotId = botOptions.find((o) => o.label === HELP_BOT_LABEL)?.value ?? null;
   const canUseHowTo = Boolean(helpKnowledgeId && helpBotId);
 
+  // บอทช่วยสอนใช้ได้กับแค่คู่มือการใช้งาน — แจ้งเตือนเมื่อเลือกไม่ตรงคู่
+  const isHelpKnowledgeSelected = selectedKnowledge === helpKnowledgeId;
+  const isHelpBotSelected = selectedBot === helpBotId;
+  const helpMismatch =
+    (helpBotId && selectedBot === helpBotId && selectedKnowledge !== helpKnowledgeId) ||
+    (helpKnowledgeId && selectedKnowledge === helpKnowledgeId && selectedBot !== helpBotId);
+  const helpMismatchMessage = helpMismatch
+    ? isHelpBotSelected && !isHelpKnowledgeSelected
+      ? 'บอทช่วยสอนใช้ได้กับคู่มือการใช้งานเท่านั้น — กรุณาเปลี่ยน Knowledge ให้เป็นคู่มือการใช้งาน'
+      : 'คู่มือการใช้งานใช้กับบอทช่วยสอนเท่านั้น — กรุณาเปลี่ยน Bot ให้เป็นบอทช่วยสอน'
+    : '';
+
+  const helpMismatchToastShownRef = useRef(false);
+  const [showMismatchRing, setShowMismatchRing] = useState(false);
+  const mismatchRingTimerRef = useRef(null);
+  useEffect(() => {
+    if (!helpMismatch) {
+      helpMismatchToastShownRef.current = false;
+      setShowMismatchRing(false);
+      if (mismatchRingTimerRef.current) {
+        clearTimeout(mismatchRingTimerRef.current);
+        mismatchRingTimerRef.current = null;
+      }
+      return;
+    }
+    return () => {
+      if (mismatchRingTimerRef.current) clearTimeout(mismatchRingTimerRef.current);
+    };
+  }, [helpMismatch]);
+  const showMismatchRingTemporarily = useCallback(() => {
+    setShowMismatchRing(true);
+    if (mismatchRingTimerRef.current) clearTimeout(mismatchRingTimerRef.current);
+    mismatchRingTimerRef.current = setTimeout(() => {
+      mismatchRingTimerRef.current = null;
+      setShowMismatchRing(false);
+    }, 3000);
+  }, []);
+
   const persistKnowledge = useCallback((id) => {
     if (id != null) localStorage.setItem(STORAGE_KNOWLEDGE, String(id));
     else localStorage.removeItem(STORAGE_KNOWLEDGE);
@@ -59,7 +99,14 @@ function Homepage() {
   useEffect(() => {
     const cachedDocs = listCache.getDocuments();
     const cachedBots = listCache.getBots();
-    if (cachedBots?.length && cachedDocs?.length) {
+    const fromNewChat = location.state?.fromNewChat === true;
+
+    if (!fromNewChat) {
+      setSelectedKnowledge(null);
+      setSelectedBot(null);
+      localStorage.removeItem(STORAGE_KNOWLEDGE);
+      localStorage.removeItem(STORAGE_BOT);
+    } else if (cachedBots?.length && cachedDocs?.length) {
       const savedKnowledge = localStorage.getItem(STORAGE_KNOWLEDGE);
       const savedBot = localStorage.getItem(STORAGE_BOT);
       if (savedKnowledge && cachedDocs.some((d) => d.id === savedKnowledge)) setSelectedKnowledge(savedKnowledge);
@@ -81,13 +128,15 @@ function Homepage() {
         listCache.setBots(botsList);
         listCache.setDocuments(docsList);
 
-        const savedKnowledge = localStorage.getItem(STORAGE_KNOWLEDGE);
-        const savedBot = localStorage.getItem(STORAGE_BOT);
-        if (savedKnowledge && docsList.some((d) => d.id === savedKnowledge)) {
-          setSelectedKnowledge(savedKnowledge);
-        }
-        if (savedBot && botsList.some((b) => b.id === savedBot)) {
-          setSelectedBot(savedBot);
+        if (fromNewChat) {
+          const savedKnowledge = localStorage.getItem(STORAGE_KNOWLEDGE);
+          const savedBot = localStorage.getItem(STORAGE_BOT);
+          if (savedKnowledge && docsList.some((d) => d.id === savedKnowledge)) {
+            setSelectedKnowledge(savedKnowledge);
+          }
+          if (savedBot && botsList.some((b) => b.id === savedBot)) {
+            setSelectedBot(savedBot);
+          }
         }
       } catch (err) {
         console.error('Failed to load bots/documents', err);
@@ -96,7 +145,7 @@ function Homepage() {
       }
     };
     bootstrap();
-  }, []);
+  }, [location.state?.fromNewChat]);
 
   const createNewChat = async (firstMessage) => {
     const message = (firstMessage || '').trim().slice(0, 1000);
@@ -161,36 +210,45 @@ function Homepage() {
       {/* Top Bar */}
       <div className='flex justify-between items-center mb-8'>
         <div className="flex items-center gap-3">
-          <Dropdown
-            options={knowledgeOptions}
-            selectedValue={selectedKnowledge}
-            onSelect={(id) => {
-              setSelectedKnowledge(id);
-              persistKnowledge(id);
-              const isHelpKnowledge = id === helpKnowledgeId;
-              if (isHelpKnowledge && helpBotId) {
-                setSelectedBot(helpBotId);
-                persistBot(helpBotId);
-              }
-            }}
-            placeholder={loadingOptions ? 'กำลังโหลด Knowledge...' : 'Select Knowledge'}
-            disabled={loadingOptions}
-          />
-          <Dropdown
-            options={botOptions}
-            selectedValue={selectedBot}
-            onSelect={(id) => {
-              setSelectedBot(id);
-              persistBot(id);
-              const isHelpBot = id === helpBotId;
-              if (isHelpBot && helpKnowledgeId) {
-                setSelectedKnowledge(helpKnowledgeId);
-                persistKnowledge(helpKnowledgeId);
-              }
-            }}
-            placeholder={loadingOptions ? 'กำลังโหลด Bot...' : 'Select Bots (optional)'}
-            disabled={loadingOptions}
-          />
+          <div className={helpMismatch && showMismatchRing && isHelpBotSelected ? 'rounded-lg ring-2 ring-red-400 ring-offset-1' : ''}>
+            <Dropdown
+              options={knowledgeOptions}
+              selectedValue={selectedKnowledge}
+              onSelect={(id) => {
+                setSelectedKnowledge(id);
+                persistKnowledge(id);
+                const isHelpKnowledge = id === helpKnowledgeId;
+                if (isHelpKnowledge && helpBotId) {
+                  setSelectedBot(helpBotId);
+                  persistBot(helpBotId);
+                }
+              }}
+              placeholder={loadingOptions ? 'กำลังโหลด Knowledge...' : 'Select Knowledge'}
+              disabled={loadingOptions}
+            />
+          </div>
+          <div className={helpMismatch && showMismatchRing && isHelpKnowledgeSelected ? 'rounded-lg ring-2 ring-red-400 ring-offset-1' : ''}>
+            <Dropdown
+              options={botOptions}
+              selectedValue={selectedBot}
+              onSelect={(id) => {
+                setSelectedBot(id);
+                persistBot(id);
+                const bot = bots.find((b) => b.id === id);
+                const isHelpBot = id === helpBotId;
+                if (isHelpBot && helpKnowledgeId) {
+                  setSelectedKnowledge(helpKnowledgeId);
+                  persistKnowledge(helpKnowledgeId);
+                } else if (bot?.documents?.length) {
+                  const firstDocId = bot.documents[0].id;
+                  setSelectedKnowledge(firstDocId);
+                  persistKnowledge(firstDocId);
+                }
+              }}
+              placeholder={loadingOptions ? 'กำลังโหลด Bot...' : 'Select Bots (optional)'}
+              disabled={loadingOptions}
+            />
+          </div>
         </div>
         <button className='text-gray-600 text-xl cursor-pointer hover:text-gray-800 transition'>
           <HiPencilAlt />
@@ -218,7 +276,14 @@ function Homepage() {
             <textarea
               value={chatInput}
               onChange={(e) => {
-                setChatInput(e.target.value);
+                const next = e.target.value;
+                setChatInput(next);
+                if (next.trim().length === 0) helpMismatchToastShownRef.current = false;
+                // แจ้งเตือนแบบ popup มุมขวาบนเมื่อผู้ใช้เริ่มพิมพ์ขณะเลือก Bot/Knowledge ไม่ตรงคู่
+                if (helpMismatch && next.trim().length > 0 && !helpMismatchToastShownRef.current) {
+                  helpMismatchToastShownRef.current = true;
+                  showToast(helpMismatchMessage, 'warning', 5000);
+                }
                 // Auto resize textarea with max height limit
                 const textarea = e.target;
                 textarea.style.height = 'auto';
@@ -232,9 +297,17 @@ function Homepage() {
                 const maxHeight = 128; // 8rem = 128px
                 textarea.style.height = `${Math.min(textarea.scrollHeight, maxHeight)}px`;
                 
-                // ส่งข้อความเมื่อกด Enter (ไม่ใช่ Shift+Enter)
+                // ส่งข้อความเมื่อกด Enter (ไม่ใช่ Shift+Enter) — ถ้าเลือก Bot/Knowledge ไม่ตรงคู่ส่งไม่ได้ แล้วแสดงวงแดงที่ค่าที่ผิด
                 if (e.key === 'Enter' && !e.shiftKey) {
                   e.preventDefault();
+                  if (helpMismatch) {
+                    showMismatchRingTemporarily();
+                    if (!helpMismatchToastShownRef.current) {
+                      helpMismatchToastShownRef.current = true;
+                      showToast(helpMismatchMessage, 'warning', 5000);
+                    }
+                    return;
+                  }
                   handleSendMessage(e);
                 }
               }}
@@ -244,9 +317,19 @@ function Homepage() {
             />
             <button
               type='button'
-              onClick={handleSendMessage}
-              className={`text-xl cursor-pointer transition ${chatInput.trim() && !loading && !loadingOptions ? 'text-gray-600 hover:scale-110 hover:text-gray-800' : 'text-gray-300 cursor-not-allowed'}`}
-              disabled={!chatInput.trim() || loading || loadingOptions}
+              onClick={(e) => {
+              if (helpMismatch) {
+                showMismatchRingTemporarily();
+                if (!helpMismatchToastShownRef.current) {
+                  helpMismatchToastShownRef.current = true;
+                  showToast(helpMismatchMessage, 'warning', 5000);
+                }
+                return;
+              }
+              handleSendMessage(e);
+            }}
+              className={`text-xl cursor-pointer transition ${chatInput.trim() && !loading && !loadingOptions && !helpMismatch ? 'text-gray-600 hover:scale-110 hover:text-gray-800' : 'text-gray-300 cursor-not-allowed'}`}
+              disabled={!chatInput.trim() || loading || loadingOptions || helpMismatch}
             >
               <HiOutlinePaperAirplane className='transform rotate-90' />
             </button>

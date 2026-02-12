@@ -9,7 +9,7 @@ import {
 } from 'react-icons/hi';
 import { HiChatBubbleLeftRight } from 'react-icons/hi2';
 import bingsuLogo from '../assets/images/หน่องบิงไม่มีพื้นละ.png';
-import { chatAPI, getErrorMessage, messagesAPI, subscriptionAPI } from '../services/api';
+import { chatAPI, getErrorMessage, messagesAPI, subscriptionAPI, getAvatarUrl } from '../services/api';
 
 function getSourcesFromGrounding(groundingChunks) {
   if (!Array.isArray(groundingChunks)) return [];
@@ -39,6 +39,13 @@ function Chat() {
   const [usage, setUsage] = useState(null);
   const [messages, setMessagesState] = useState([]);
   const [messagesLoading, setMessagesLoading] = useState(false);
+  const [, setAvatarTick] = useState(0);
+
+  useEffect(() => {
+    const handler = () => setAvatarTick((t) => t + 1);
+    window.addEventListener('avatarUpdated', handler);
+    return () => window.removeEventListener('avatarUpdated', handler);
+  }, []);
 
   const setMessages = (updater) => {
     setMessagesState((prev) => {
@@ -350,10 +357,29 @@ function Chat() {
                         </div>
 
                         {message.sender === 'user' && (
-                          <div className='flex-shrink-0 w-8 h-8 mt-1'>
-                            <div className='w-8 h-8 bg-gradient-to-br from-gray-400 to-gray-500 rounded-full flex items-center justify-center shadow-sm'>
-                              <HiOutlineUser className='text-white text-sm' />
-                            </div>
+                          <div className='flex-shrink-0 w-8 h-8 mt-1 relative'>
+                            {(() => {
+                              try {
+                                const u = localStorage.getItem('user');
+                                const parsed = u ? JSON.parse(u) : null;
+                                const avatarUrl = parsed?.avatarUrl ? getAvatarUrl(parsed.avatarUrl) : null;
+                                if (avatarUrl) {
+                                  return (
+                                    <>
+                                      <img src={avatarUrl} alt='' className='w-8 h-8 rounded-full object-cover shadow-sm absolute inset-0' onError={(e) => { e.target.style.display = 'none'; e.target.nextElementSibling?.classList.remove('hidden'); }} />
+                                      <div className='w-8 h-8 bg-gradient-to-br from-gray-400 to-gray-500 rounded-full flex items-center justify-center shadow-sm hidden'>
+                                        <HiOutlineUser className='text-white text-sm' />
+                                      </div>
+                                    </>
+                                  );
+                                }
+                              } catch (_) {}
+                              return (
+                                <div className='w-8 h-8 bg-gradient-to-br from-gray-400 to-gray-500 rounded-full flex items-center justify-center shadow-sm'>
+                                  <HiOutlineUser className='text-white text-sm' />
+                                </div>
+                              );
+                            })()}
                           </div>
                         )}
                       </div>

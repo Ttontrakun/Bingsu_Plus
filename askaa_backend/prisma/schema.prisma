@@ -139,6 +139,7 @@ model User {
   email        String   @unique
   name         String
   passwordHash String
+  avatarUrl    String?
   emailVerifiedAt DateTime?
   emailVerificationToken String? @unique
   emailVerificationExpiresAt DateTime?

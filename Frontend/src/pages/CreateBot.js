@@ -121,10 +121,12 @@ function CreateBot() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const HELP_KNOWLEDGE_LABEL = 'คู่มือการใช้งาน';
   const filteredKnowledgeList = useMemo(() => {
+    const withoutHelpManual = knowledgeList.filter((k) => k.name !== HELP_KNOWLEDGE_LABEL);
     const q = knowledgeSearchQuery.trim().toLowerCase();
-    if (!q) return knowledgeList;
-    return knowledgeList.filter((knowledge) =>
+    if (!q) return withoutHelpManual;
+    return withoutHelpManual.filter((knowledge) =>
       knowledge.name.toLowerCase().includes(q) ||
       (knowledge.description || '').toLowerCase().includes(q)
     );

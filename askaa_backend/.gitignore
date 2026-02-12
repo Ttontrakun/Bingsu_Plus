@@ -4,6 +4,7 @@ node_modules
 
 # local uploads / storage
 .uploads/
+uploads/
 .files/
 
 # logs

@@ -1,6 +1,31 @@
 import axios from 'axios';
 import API_CONFIG from '../config/api';
 
+const AVATAR_VERSION_KEY = 'userAvatarVersion';
+
+export function getAvatarUrl(avatarUrl) {
+    if (!avatarUrl) return null;
+    if (avatarUrl.startsWith('http')) return avatarUrl;
+    let url;
+    if (avatarUrl.includes('/uploads/avatars/')) {
+        const filename = avatarUrl.replace(/^.*\/uploads\/avatars\//, '').split('?')[0];
+        if (filename) url = `/api/avatars/${filename}`;
+        else url = avatarUrl.startsWith('/') ? avatarUrl : '/' + avatarUrl;
+    } else {
+        url = avatarUrl.startsWith('/') ? avatarUrl : '/' + avatarUrl;
+    }
+    const version = typeof localStorage !== 'undefined' ? localStorage.getItem(AVATAR_VERSION_KEY) : null;
+    if (url && url.includes('/api/avatars/')) return `${url}?t=${version || 0}`;
+    return url;
+}
+
+export function setAvatarVersion() {
+    try {
+        localStorage.setItem(AVATAR_VERSION_KEY, String(Date.now()));
+        if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('avatarUpdated'));
+    } catch (_) {}
+}
+
 const api = axios.create({
     baseURL: API_CONFIG.baseURL,
     timeout: API_CONFIG.timeout,
@@ -196,9 +221,13 @@ export const credentialAPI = {
 
 // User API functions
 export const userAPI = {
-    // Get current user profile
     getCurrentUser: async () => {
         const response = await api.get('/api/auth/me');
+        return response.data;
+    },
+    updateProfile: async (payload) => {
+        const timeout = payload.avatarBase64 ? 60000 : undefined;
+        const response = await api.patch('/api/auth/me', payload, timeout ? { timeout } : {});
         return response.data;
     },
 };

@@ -1,5 +1,11 @@
 import express from "express";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
 import bcrypt from "bcryptjs";
+
+const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const projectRoot = path.resolve(__dirname, "..", "..");
 import crypto from "crypto";
 import { prisma } from "../db.js";
 import { rateLimit } from "../lib/rateLimit.js";
@@ -342,6 +348,62 @@ authRouter.post("/change-password", authenticate, async (req, res) => {
 
 authRouter.get("/me", authenticate, async (req, res) => {
   res.json({ user: sanitizeUser(req.user) });
+});
+
+authRouter.patch("/me", authenticate, async (req, res) => {
+  try {
+    const { name, avatarUrl: avatarUrlInput, avatarBase64 } = req.body ?? {};
+    const updates = {};
+    if (typeof name === "string" && name.trim()) {
+      updates.name = name.trim();
+    }
+
+    let avatarUrl = avatarUrlInput;
+    if (typeof avatarBase64 === "string" && avatarBase64.startsWith("data:image/")) {
+      const match = avatarBase64.match(/^data:image\/(\w+);base64,([\s\S]+)$/);
+      if (match) {
+        const rawExt = match[1] === "jpeg" ? "jpg" : match[1];
+        const safeExt = /^[a-z0-9]+$/i.test(rawExt) ? rawExt.toLowerCase() : "png";
+        const base64Data = match[2].replace(/\s/g, "");
+        const buffer = Buffer.from(base64Data, "base64");
+        const dir = path.join(projectRoot, "uploads", "avatars");
+        fs.mkdirSync(dir, { recursive: true });
+        const fileName = `${req.user.id}.${safeExt}`;
+        const filePath = path.join(dir, fileName);
+        fs.writeFileSync(filePath, buffer);
+        avatarUrl = `/uploads/avatars/${fileName}`;
+      }
+    }
+    if (typeof avatarUrl === "string") {
+      updates.avatarUrl = avatarUrl.trim() || null;
+    }
+
+    if (Object.keys(updates).length === 0) {
+      return res.json({ user: sanitizeUser(req.user) });
+    }
+    const userId = req.user.id;
+    if (updates.name !== undefined && updates.avatarUrl !== undefined) {
+      await prisma.$executeRaw`
+        UPDATE "User" SET "name" = ${updates.name}, "avatarUrl" = ${updates.avatarUrl}, "updatedAt" = NOW() WHERE "id" = ${userId}
+      `;
+    } else if (updates.avatarUrl !== undefined) {
+      await prisma.$executeRaw`
+        UPDATE "User" SET "avatarUrl" = ${updates.avatarUrl}, "updatedAt" = NOW() WHERE "id" = ${userId}
+      `;
+    } else if (updates.name !== undefined) {
+      await prisma.$executeRaw`
+        UPDATE "User" SET "name" = ${updates.name}, "updatedAt" = NOW() WHERE "id" = ${userId}
+      `;
+    }
+    const updated = await prisma.user.findUnique({ where: { id: userId } });
+    return res.json({ user: sanitizeUser(updated || req.user) });
+  } catch (err) {
+    console.error("PATCH /me error:", err);
+    const message = err.meta?.column_name
+      ? "ฐานข้อมูลยังไม่มีฟิลด์รูปโปรไฟล์ — รันคำสั่ง: npx prisma migrate deploy"
+      : (err.message || "อัปเดตโปรไฟล์ไม่สำเร็จ");
+    return res.status(500).json({ error: message });
+  }
 });
 
 authRouter.post("/logout", authenticate, async (req, res) => {

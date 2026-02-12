@@ -2,13 +2,15 @@ import { useState, useEffect } from 'react';
 import { HiX, HiOutlineUser, HiTrash, HiOutlineMail } from 'react-icons/hi';
 import bingsuLogo from '../assets/images/หน่องบิงไม่มีพื้นละ.png';
 import ChangePasswordModal from './ChangePasswordModal';
-import { userAPI, getErrorMessage } from '../services/api';
+import { userAPI, getErrorMessage, getAvatarUrl, setAvatarVersion } from '../services/api';
 
 function AccountModal({ isOpen, onClose }) {
   const [isEditMode, setIsEditMode] = useState(false);
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [profileImage, setProfileImage] = useState(bingsuLogo);
+  const [avatarUrlInput, setAvatarUrlInput] = useState('');
+  const [pendingAvatarFile, setPendingAvatarFile] = useState(null);
   const [originalData, setOriginalData] = useState({ name: '', email: '', profileImage: bingsuLogo });
   const [isChangePasswordModalOpen, setIsChangePasswordModalOpen] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
@@ -27,54 +29,60 @@ function AccountModal({ isOpen, onClose }) {
   const loadUserData = async () => {
     setIsLoading(true);
     setError('');
+    setPendingAvatarFile(null);
+    setAvatarUrlInput('');
     try {
-      const user = await userAPI.getCurrentUser();
+      const data = await userAPI.getCurrentUser();
+      const user = data.user || data;
+      const avatarUrl = user.avatarUrl ? getAvatarUrl(user.avatarUrl) : null;
+      const profileImageSrc = avatarUrl || bingsuLogo;
 
       const userData = {
         name: user.name || '',
         email: user.email || '',
-        profileImage: bingsuLogo, // Backend doesn't store profile image yet
+        profileImage: profileImageSrc,
       };
       
       setName(userData.name);
       setEmail(userData.email);
-      setProfileImage(userData.profileImage);
+      setProfileImage(profileImageSrc);
       setOriginalData(userData);
 
-      // Update localStorage with latest data
       try {
         const userDataForStorage = {
           id: user.id,
           email: user.email,
           name: user.name,
           role: user.role,
+          avatarUrl: user.avatarUrl || null,
         };
         localStorage.setItem('user', JSON.stringify(userDataForStorage));
       } catch (storageError) {
         console.error('Error updating localStorage:', storageError);
       }
-    } catch (error) {
-      console.error('Error loading user data:', error);
-      const errorMessage = getErrorMessage(error) || 'ไม่สามารถโหลดข้อมูลผู้ใช้ได้';
-      setError(errorMessage);
-      
-      // Fallback to localStorage if API fails
+    } catch (err) {
+      console.error('Error loading user data:', err);
       const storedUser = localStorage.getItem('user');
       if (storedUser) {
         try {
           const user = JSON.parse(storedUser);
+          const profileImageSrc = user.avatarUrl ? getAvatarUrl(user.avatarUrl) : bingsuLogo;
           const userData = {
             name: user.fullName || user.name || '',
             email: user.email || '',
-            profileImage: user.profileImage || bingsuLogo,
+            profileImage: profileImageSrc,
           };
           setName(userData.name);
           setEmail(userData.email);
-          setProfileImage(userData.profileImage);
+          setProfileImage(profileImageSrc);
           setOriginalData(userData);
+          setError('');
         } catch (parseError) {
           console.error('Error parsing stored user data:', parseError);
+          setError(getErrorMessage(err) || 'ไม่สามารถโหลดข้อมูลผู้ใช้ได้');
         }
+      } else {
+        setError(getErrorMessage(err) || 'ไม่สามารถโหลดข้อมูลผู้ใช้ได้');
       }
     } finally {
       setIsLoading(false);
@@ -84,33 +92,85 @@ function AccountModal({ isOpen, onClose }) {
   const handleImageChange = (e) => {
     const file = e.target.files[0];
     if (file) {
+      setPendingAvatarFile(file);
+      setAvatarUrlInput('');
       const reader = new FileReader();
-      reader.onloadend = () => {
-        setProfileImage(reader.result);
-      };
+      reader.onloadend = () => setProfileImage(reader.result);
       reader.readAsDataURL(file);
     }
   };
 
+  const handleAvatarUrlChange = (e) => {
+    const url = e.target.value.trim();
+    setAvatarUrlInput(url);
+    if (url) {
+      setPendingAvatarFile(null);
+      setProfileImage(url);
+    } else {
+      setProfileImage(originalData.profileImage);
+    }
+  };
+
   const handleEditProfile = () => {
-    // ask_AA backend currently does not expose profile update endpoints.
-    setError('ยังไม่รองรับการแก้ไขโปรไฟล์ในตอนนี้');
-    setIsEditMode(false);
+    setIsEditMode(true);
   };
 
   const handleCancel = () => {
-    // Reset ข้อมูลกลับเป็นข้อมูลเดิม
     setName(originalData.name);
     setEmail(originalData.email);
     setProfileImage(originalData.profileImage);
+    setPendingAvatarFile(null);
+    setAvatarUrlInput('');
     setIsEditMode(false);
     setError('');
     setSuccess('');
   };
 
   const handleSave = async () => {
-    setError('ยังไม่รองรับการแก้ไขโปรไฟล์ในตอนนี้');
-    setIsSaving(false);
+    setError('');
+    setSuccess('');
+    setIsSaving(true);
+    try {
+      const payload = {};
+      const trimmedName = name.trim();
+      if (trimmedName) payload.name = trimmedName;
+      if (pendingAvatarFile) {
+        const dataUrl = await new Promise((resolve, reject) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result);
+          reader.onerror = reject;
+          reader.readAsDataURL(pendingAvatarFile);
+        });
+        if (dataUrl && typeof dataUrl === 'string' && dataUrl.startsWith('data:image/')) {
+          payload.avatarBase64 = dataUrl;
+        }
+      } else if (avatarUrlInput.trim()) {
+        payload.avatarUrl = avatarUrlInput.trim();
+      }
+      if (Object.keys(payload).length === 0) {
+        setSuccess('ไม่มีการเปลี่ยนแปลง');
+        setIsSaving(false);
+        return;
+      }
+      const data = await userAPI.updateProfile(payload);
+      const user = data.user || data;
+      if (payload.avatarBase64 || payload.avatarUrl) setAvatarVersion();
+      const avatarUrl = user.avatarUrl ? getAvatarUrl(user.avatarUrl) : null;
+      setProfileImage(avatarUrl || bingsuLogo);
+      setOriginalData({ ...originalData, name: user.name || name, profileImage: avatarUrl || bingsuLogo });
+      const forStorage = JSON.parse(localStorage.getItem('user') || '{}');
+      forStorage.name = user.name;
+      forStorage.avatarUrl = user.avatarUrl || null;
+      localStorage.setItem('user', JSON.stringify(forStorage));
+      setSuccess('บันทึกการเปลี่ยนแปลงแล้ว');
+      setPendingAvatarFile(null);
+      setAvatarUrlInput('');
+      setIsEditMode(false);
+    } catch (err) {
+      setError(getErrorMessage(err) || 'บันทึกไม่สำเร็จ');
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   if (!isOpen) return null;
@@ -176,19 +236,29 @@ function AccountModal({ isOpen, onClose }) {
                     <h3 className='text-lg font-semibold text-gray-800 mb-3'>รูปโปรไฟล์</h3>
                     {isEditMode ? (
                       <>
-                    <label className='inline-block'>
-                      <input
-                        type='file'
-                        accept='image/*'
-                        onChange={handleImageChange}
-                        className='hidden'
-                        id='profile-upload'
-                      />
-                          <span className='px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm font-medium rounded-lg cursor-pointer transition-all inline-block shadow-sm hover:shadow-md active:scale-95'>
-                            เปลี่ยนรูปภาพ
-                      </span>
-                    </label>
-                        <p className='text-xs text-gray-500 mt-2'>รองรับไฟล์ JPG, PNG หรือ GIF</p>
+                        <div className='flex flex-wrap items-center gap-2'>
+                          <label className='inline-block'>
+                            <input
+                              type='file'
+                              accept='image/*'
+                              onChange={handleImageChange}
+                              className='hidden'
+                              id='profile-upload'
+                            />
+                            <span className='px-5 py-2.5 bg-gray-100 hover:bg-gray-200 text-gray-800 text-sm font-medium rounded-lg cursor-pointer transition-all inline-block shadow-sm hover:shadow-md active:scale-95'>
+                              เลือกไฟล์
+                            </span>
+                          </label>
+                          <span className='text-gray-400'>หรือ</span>
+                          <input
+                            type='url'
+                            value={avatarUrlInput}
+                            onChange={handleAvatarUrlChange}
+                            placeholder='วาง URL รูปภาพ'
+                            className='flex-1 min-w-[200px] max-w-xs px-3 py-2 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-yellow-400'
+                          />
+                        </div>
+                        <p className='text-xs text-gray-500 mt-2'>รองรับไฟล์ JPG, PNG, GIF หรือ URL รูปภาพ</p>
                       </>
                     ) : (
                       <button
