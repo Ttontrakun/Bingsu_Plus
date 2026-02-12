@@ -493,6 +493,12 @@ function Chat() {
                                   ? 'bg-gradient-to-br from-yellow-400 to-yellow-500 text-gray-900 shadow-sm'
                                   : 'bg-white text-gray-900 border border-gray-200 shadow-sm'
                               }`}
+                              style={{ 
+                                maxWidth: '100%',
+                                wordWrap: 'break-word',
+                                overflowWrap: 'break-word',
+                                wordBreak: 'break-word'
+                              }}
                               onMouseMove={(e) => {
                                 if (hoveredMessageId !== message.id) {
                                   setHoveredMessageId(message.id);
@@ -513,7 +519,17 @@ function Chat() {
                                 });
                               }}
                             >
-                              <p className='text-[15px] leading-relaxed whitespace-pre-wrap break-words'>
+                              <p 
+                                className='text-[15px] leading-relaxed whitespace-pre-wrap break-words'
+                                style={{
+                                  wordWrap: 'break-word',
+                                  overflowWrap: 'break-word',
+                                  wordBreak: 'break-word',
+                                  hyphens: 'auto',
+                                  maxWidth: '100%',
+                                  overflow: 'hidden'
+                                }}
+                              >
                                 {message.text}
                               </p>
                               
