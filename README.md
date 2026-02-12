@@ -6,13 +6,63 @@
 
 ## สารบัญ
 
+- [Quick start — หลัง git clone รันด้วย Docker](#quick-start--หลัง-git-clone-รันด้วย-docker)
 - [ภาพรวมระบบ](#ภาพรวมระบบ)
 - [สิ่งที่ต้องมีก่อนติดตั้ง](#สิ่งที่ต้องมีก่อนติดตั้ง)
 - [การติดตั้งตั้งแต่ต้น (หลัง Git Clone)](#การติดตั้งตั้งแต่ต้น-หลัง-git-clone)
 - [การรันในโหมดพัฒนา](#การรันในโหมดพัฒนา)
+- [การรันทั้ง stack ด้วย Docker Compose](#การรันทั้ง-stack-ด้วย-docker-compose-คำสั่งเดียว)
 - [การ Deploy แบบ Production (Docker)](#การ-deploy-แบบ-production-docker)
 - [โครงสร้างโปรเจกต์](#โครงสร้างโปรเจกต์)
 - [แก้ปัญหาเบื้องต้น](#แก้ปัญหาเบื้องต้น)
+
+---
+
+## Quick start — หลัง git clone รันด้วย Docker
+
+สมมติเพิ่ง `git clone` มา และมี **Docker Desktop** (หรือ Docker Engine) ติดตั้งแล้ว ทำแค่ 3 ขั้น:
+
+**1. เข้าโฟลเดอร์โปรเจกต์**
+
+```bash
+cd bingsu_plus
+```
+
+(ถ้าโคลนทั้ง repo `ask_AA` จะอยู่ที่ `ask_AA/bingsu_plus` → ใช้ `cd ask_AA/bingsu_plus`)
+
+**2. สร้างไฟล์ env สำหรับ Backend**
+
+```powershell
+# Windows
+copy askaa_backend\env.sample askaa_backend\.env
+```
+
+```bash
+# macOS / Linux
+cp askaa_backend/env.sample askaa_backend/.env
+```
+
+แล้วเปิด `askaa_backend/.env` ใส่ค่าที่จำเป็น เช่น `OPENAI_API_KEY` หรือ `GEMINI_API_KEY` (ตามที่ใช้แชท/embedding) — ค่าอื่นใช้จาก sample ได้ก่อน
+
+**3. รันทั้ง stack**
+
+```bash
+docker compose up -d --build
+```
+
+รอ build และรันครั้งแรกสักครู่ แล้วเปิดเบราว์เซอร์ที่ **http://localhost**
+
+- ปิด stack: `docker compose down`
+- ดู log: `docker compose logs -f`
+
+ถ้ายังไม่มี user ให้ seed ก่อน (รันคำสั่งใน container):
+
+```bash
+docker compose exec legacy node server/scripts/seed-admins.js
+docker compose exec legacy node server/scripts/seed-help-bot.js
+```
+
+จากนั้นล็อกอินด้วยบัญชีที่ seed (เช่น `admin@admin.com` ตามที่ตั้งใน seed)
 
 ---
 
@@ -229,9 +279,49 @@ npm start
 
 ---
 
+## การรันทั้ง stack ด้วย Docker Compose (คำสั่งเดียว)
+
+รันทุกอย่างใน Docker โดยไม่ต้องรัน `npm start` / `npm run dev:*` บนเครื่อง:
+
+1. **เตรียม `.env` ในโฟลเดอร์ `askaa_backend`** (ใช้ร่วมกับ Docker):
+
+   ```powershell
+   cd bingsu_plus\askaa_backend
+   copy env.sample .env
+   ```
+
+   แก้ `.env` ใส่ API keys (เช่น `OPENAI_API_KEY` หรือ `GEMINI_API_KEY`) ตามที่ใช้
+
+2. **รันทั้ง stack จากโฟลเดอร์ `bingsu_plus`:**
+
+   ```bash
+   cd bingsu_plus
+   docker compose up -d --build
+   ```
+
+   หรือดู log แบบต่อเนื่อง:
+
+   ```bash
+   docker compose up --build
+   ```
+
+3. **เข้าใช้งาน:** เปิดเบราว์เซอร์ที่ `http://localhost` (พอร์ต 80)
+
+| Service  | พอร์ต (ถ้า expose) |
+|----------|----------------------|
+| เว็บ (Nginx + React) | `80` |
+| FastAPI (โดยตรง)    | `8000` |
+| Postgres            | `5434` |
+| Redis               | `6380` |
+| Qdrant              | `6334` |
+
+ปิด stack: `docker compose down`
+
+---
+
 ## การ Deploy แบบ Production (Docker)
 
-เมื่อต้องการให้คนอื่นเข้าใช้ได้ผ่านเว็บ โดยไม่ต้องเปิด Cursor หรือรัน `npm start` / `npm run dev:*` เอง:
+เมื่อต้องการ deploy จริง (รันจากโฟลเดอร์ `askaa_backend`):
 
 1. **เตรียม `.env` ในโฟลเดอร์ `askaa_backend`** (ไม่ใช้ `.env.local`):
 
@@ -250,6 +340,8 @@ npm start
    cd askaa_backend
    docker compose -f docker-compose.prod.yml up -d --build
    ```
+
+   (ใช้ `docker-compose.prod.yml` เมื่ออยู่ที่ `askaa_backend`; ถ้าอยู่ที่ `bingsu_plus` ใช้ `docker compose up -d --build` ตามหัวข้อด้านบน)
 
 4. **เข้าใช้งาน:** เปิดเบราว์เซอร์ที่ `http://<IP ของเครื่อง>` (หรือโดเมนที่ชี้มาที่ IP นี้)
 

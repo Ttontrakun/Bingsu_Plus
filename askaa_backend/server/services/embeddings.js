@@ -1,5 +1,11 @@
 import { GoogleGenAI } from "@google/genai";
 import { embeddingApiKey, embeddingBaseUrl, embeddingBatchSize, embeddingModel, embeddingProvider, embeddingTimeoutMs } from "../config.js";
+import { Agent } from "undici";
+
+const embeddingConnectTimeoutMs = Number(process.env.EMBEDDING_CONNECT_TIMEOUT_MS || embeddingTimeoutMs || 30000);
+const embeddingDispatcher = new Agent({
+  connectTimeout: Number.isFinite(embeddingConnectTimeoutMs) ? embeddingConnectTimeoutMs : 30000,
+});
 
 let geminiClient;
 const getGeminiClient = () => {
@@ -47,6 +53,7 @@ const embedTextsOpenAi = async (texts) => {
   try {
     const response = await fetch(`${client.baseUrl}/embeddings`, {
       method: "POST",
+      dispatcher: embeddingDispatcher,
       headers: {
         "Content-Type": "application/json",
         Authorization: `Bearer ${client.apiKey}`,

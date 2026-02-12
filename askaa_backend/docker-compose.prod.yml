@@ -1,4 +1,4 @@
-services:
+  services:
   postgres:
     image: postgres:16-alpine
     restart: unless-stopped
@@ -29,8 +29,8 @@ services:
   # Node/Express legacy API (used via FastAPI proxy)
   legacy:
     build:
-      context: ..
-      dockerfile: askaa_backend/Dockerfile.legacy
+      context: .
+      dockerfile: Dockerfile.legacy
     restart: unless-stopped
     env_file:
       - .env
@@ -57,8 +57,8 @@ services:
   # Upload worker (required when UPLOAD_QUEUE_MODE=redis)
   worker:
     build:
-      context: ..
-      dockerfile: askaa_backend/Dockerfile.legacy
+      context: .
+      dockerfile: Dockerfile.legacy
     restart: unless-stopped
     env_file:
       - .env
@@ -84,8 +84,8 @@ services:
   # FastAPI main API (OCR + proxy to legacy)
   api:
     build:
-      context: ..
-      dockerfile: askaa_backend/backend/Dockerfile
+      context: .
+      dockerfile: backend/Dockerfile
     restart: unless-stopped
     env_file:
       - .env
