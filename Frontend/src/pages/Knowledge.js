@@ -245,7 +245,7 @@ function Knowledge() {
                     }}
                     className='inline-flex items-center gap-2 px-2 py-1 bg-yellow-400 hover:bg-yellow-500 text-gray-800 font-medium rounded-md shadow hover:shadow-md transition-all duration-200 hover:scale-105 active:scale-95 text-sm'
                   >
-                    <span>Details</span>
+                    <span>Add Data</span>
                     <span>→</span>
                   </button>
 
