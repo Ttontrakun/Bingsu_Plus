@@ -38,11 +38,32 @@ async def get_chats(
 
 
 @router.get("/{chat_id}", response_model=ChatResponse)
-async def get_chat(chat_id: int, db: Session = Depends(get_db)):
-    """Get chat by ID"""
-    chat = db.query(Chat).filter(Chat.id == chat_id).first()
-    if not chat:
+async def get_chat(
+    chat_id: int, 
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get chat by ID - requires user to be a member of the chat"""
+    from sqlalchemy import exists
+    from app.models import chat_users
+    
+    # Check if chat exists
+    chat_exists = db.query(exists().where(Chat.id == chat_id)).scalar()
+    if not chat_exists:
         raise HTTPException(status_code=404, detail="Chat not found")
+    
+    # SECURITY: Check if user is a member of the chat
+    membership = db.query(
+        exists().where(
+            (chat_users.c.chatId == chat_id) & 
+            (chat_users.c.userId == current_user.id)
+        )
+    ).scalar()
+    
+    if not membership:
+        raise HTTPException(status_code=403, detail="User is not a member of this chat")
+    
+    chat = db.query(Chat).filter(Chat.id == chat_id).first()
     return chat
 
 
@@ -80,11 +101,30 @@ async def create_chat(
 
 
 @router.put("/{chat_id}", response_model=ChatResponse)
-async def update_chat(chat_id: int, chat: ChatUpdate, db: Session = Depends(get_db)):
-    """Update chat"""
+async def update_chat(
+    chat_id: int, 
+    chat: ChatUpdate, 
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Update chat - requires user to be a member of the chat"""
+    from sqlalchemy import exists
+    from app.models import chat_users
+    
     db_chat = db.query(Chat).filter(Chat.id == chat_id).first()
     if not db_chat:
         raise HTTPException(status_code=404, detail="Chat not found")
+    
+    # SECURITY: Check if user is a member of the chat
+    membership = db.query(
+        exists().where(
+            (chat_users.c.chatId == chat_id) & 
+            (chat_users.c.userId == current_user.id)
+        )
+    ).scalar()
+    
+    if not membership:
+        raise HTTPException(status_code=403, detail="User is not a member of this chat")
     
     if chat.name is not None:
         db_chat.name = chat.name
@@ -95,11 +135,29 @@ async def update_chat(chat_id: int, chat: ChatUpdate, db: Session = Depends(get_
 
 
 @router.delete("/{chat_id}")
-async def delete_chat(chat_id: int, db: Session = Depends(get_db)):
-    """Delete chat"""
+async def delete_chat(
+    chat_id: int, 
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Delete chat - requires user to be a member of the chat"""
+    from sqlalchemy import exists
+    from app.models import chat_users
+    
     db_chat = db.query(Chat).filter(Chat.id == chat_id).first()
     if not db_chat:
         raise HTTPException(status_code=404, detail="Chat not found")
+    
+    # SECURITY: Check if user is a member of the chat
+    membership = db.query(
+        exists().where(
+            (chat_users.c.chatId == chat_id) & 
+            (chat_users.c.userId == current_user.id)
+        )
+    ).scalar()
+    
+    if not membership:
+        raise HTTPException(status_code=403, detail="User is not a member of this chat")
     
     db.delete(db_chat)
     db.commit()
@@ -107,11 +165,30 @@ async def delete_chat(chat_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{chat_id}/users", response_model=ChatResponse)
-async def add_user_to_chat(chat_id: int, chat_user: ChatUserCreate, db: Session = Depends(get_db)):
-    """Add user to chat"""
+async def add_user_to_chat(
+    chat_id: int, 
+    chat_user: ChatUserCreate, 
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Add user to chat - requires current user to be a member of the chat"""
+    from sqlalchemy import exists
+    from app.models import chat_users
+    
     db_chat = db.query(Chat).filter(Chat.id == chat_id).first()
     if not db_chat:
         raise HTTPException(status_code=404, detail="Chat not found")
+    
+    # SECURITY: Check if current user is a member of the chat
+    membership = db.query(
+        exists().where(
+            (chat_users.c.chatId == chat_id) & 
+            (chat_users.c.userId == current_user.id)
+        )
+    ).scalar()
+    
+    if not membership:
+        raise HTTPException(status_code=403, detail="User is not a member of this chat")
     
     user = db.query(User).filter(User.id == chat_user.userId).first()
     if not user:
@@ -140,12 +217,27 @@ async def update_user_role_in_chat(
     chat_id: int, 
     user_id: int, 
     chat_user: ChatUserUpdate, 
+    current_user: User = Depends(get_current_user),
     db: Session = Depends(get_db)
 ):
-    """Update user role in chat"""
+    """Update user role in chat - requires current user to be a member of the chat"""
+    from sqlalchemy import exists
+    from app.models import chat_users
+    
     db_chat = db.query(Chat).filter(Chat.id == chat_id).first()
     if not db_chat:
         raise HTTPException(status_code=404, detail="Chat not found")
+    
+    # SECURITY: Check if current user is a member of the chat
+    membership = db.query(
+        exists().where(
+            (chat_users.c.chatId == chat_id) & 
+            (chat_users.c.userId == current_user.id)
+        )
+    ).scalar()
+    
+    if not membership:
+        raise HTTPException(status_code=403, detail="User is not a member of this chat")
     
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -166,11 +258,30 @@ async def update_user_role_in_chat(
 
 
 @router.delete("/{chat_id}/users/{user_id}", response_model=ChatResponse)
-async def remove_user_from_chat(chat_id: int, user_id: int, db: Session = Depends(get_db)):
-    """Remove user from chat"""
+async def remove_user_from_chat(
+    chat_id: int, 
+    user_id: int, 
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Remove user from chat - requires current user to be a member of the chat"""
+    from sqlalchemy import exists
+    from app.models import chat_users
+    
     db_chat = db.query(Chat).filter(Chat.id == chat_id).first()
     if not db_chat:
         raise HTTPException(status_code=404, detail="Chat not found")
+    
+    # SECURITY: Check if current user is a member of the chat
+    membership = db.query(
+        exists().where(
+            (chat_users.c.chatId == chat_id) & 
+            (chat_users.c.userId == current_user.id)
+        )
+    ).scalar()
+    
+    if not membership:
+        raise HTTPException(status_code=403, detail="User is not a member of this chat")
     
     user = db.query(User).filter(User.id == user_id).first()
     if not user:
@@ -186,8 +297,26 @@ async def remove_user_from_chat(chat_id: int, user_id: int, db: Session = Depend
 
 
 @router.get("/{chat_id}/users", response_model=List[dict])
-async def get_chat_users(chat_id: int, db: Session = Depends(get_db)):
-    """Get all users in a chat"""
+async def get_chat_users(
+    chat_id: int, 
+    current_user: User = Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """Get all users in a chat - requires user to be a member of the chat"""
+    from sqlalchemy import exists
+    from app.models import chat_users
+    
+    # SECURITY: Check if user is a member of the chat
+    membership = db.query(
+        exists().where(
+            (chat_users.c.chatId == chat_id) & 
+            (chat_users.c.userId == current_user.id)
+        )
+    ).scalar()
+    
+    if not membership:
+        raise HTTPException(status_code=403, detail="User is not a member of this chat")
+    
     db_chat = db.query(Chat).filter(Chat.id == chat_id).first()
     if not db_chat:
         raise HTTPException(status_code=404, detail="Chat not found")
@@ -197,7 +326,8 @@ async def get_chat_users(chat_id: int, db: Session = Depends(get_db)):
     result = db.execute(
         select(
             User.id,
-            User.username,
+            User.firstName,
+            User.lastName,
             User.email,
             chat_users.c.role,
             chat_users.c.joinedAt
@@ -211,7 +341,8 @@ async def get_chat_users(chat_id: int, db: Session = Depends(get_db)):
     users_data = [
         {
             "userId": row.id,
-            "username": row.username,
+            "firstName": row.firstName,
+            "lastName": row.lastName,
             "email": row.email,
             "role": row.role,
             "joinedAt": row.joinedAt

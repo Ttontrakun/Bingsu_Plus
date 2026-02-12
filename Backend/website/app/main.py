@@ -12,6 +12,9 @@ from fastapi.exceptions import RequestValidationError
 from starlette.exceptions import HTTPException as StarletteHTTPException
 from dotenv import load_dotenv
 import os
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 # Import database
 from app.database import engine, Base
@@ -30,12 +33,42 @@ except Exception as e:
     print(f"⚠️  Warning: Could not create database tables: {e}")
     print("   Make sure PostgreSQL is running and DATABASE_URL is correct")
 
+# Initialize rate limiter
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
+
+limiter = Limiter(key_func=get_remote_address)
+
 # Initialize FastAPI app
 app = FastAPI(
     title="Backend API",
     version="1.0.0",
     description="FastAPI Backend with PostgreSQL"
 )
+
+# Add rate limiter to app
+app.state.limiter = limiter
+
+# Custom rate limit exception handler with Thai message
+@app.exception_handler(RateLimitExceeded)
+async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
+    """Handle rate limit exceptions with user-friendly Thai message"""
+    response = JSONResponse(
+        status_code=429,
+        content={
+            "detail": "คุณพยายามเข้าสู่ระบบบ่อยเกินไป กรุณารอสักครู่แล้วลองอีกครั้ง"
+        }
+    )
+    # Add CORS headers
+    origin = request.headers.get("origin")
+    if is_allowed_origin(origin):
+        response.headers["Access-Control-Allow-Origin"] = origin
+        response.headers["Access-Control-Allow-Credentials"] = "true"
+    # Add Retry-After header if available
+    if hasattr(exc, 'retry_after') and exc.retry_after:
+        response.headers["Retry-After"] = str(exc.retry_after)
+    return response
 
 # Setup logging
 # Import logs router first to setup logging handlers (this sets up stream handler)
@@ -176,3 +209,8 @@ app.include_router(credential.router)
 app.include_router(chats.router)
 app.include_router(chat_messages.router)
 app.include_router(logs.router)
+
+# Initialize rate limiter for auth router
+# This ensures the limiter in auth.router uses the same instance as app.state.limiter
+from app.routers import auth as auth_router
+auth_router.limiter.state = limiter

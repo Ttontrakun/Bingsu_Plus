@@ -18,7 +18,7 @@ import ProfileModal from './ProfileModal';
 import AccountModal from './AccountModal';
 import ChatMenuModal from './ChatMenuModal';
 import ConfirmModal from './ConfirmModal';
-import { authAPI } from '../services/api';
+import { authAPI, chatAPI } from '../services/api';
 
 function Sidebar({ onCollapseChange }) {
   const [isCollapsed, setIsCollapsed] = useState(false);
@@ -27,22 +27,8 @@ function Sidebar({ onCollapseChange }) {
   const navigate = useNavigate();
   const location = useLocation();
 
-  // Array สำหรับเก็บรายการ chats - โหลดจาก localStorage หรือใช้ default
-  const [chats, setChats] = useState(() => {
-    const storedChats = localStorage.getItem('chats');
-    if (storedChats) {
-      try {
-        return JSON.parse(storedChats);
-      } catch (error) {
-        console.error('Error parsing chats:', error);
-      }
-    }
-    return [
-      { id: 'chat-1', name: 'Chat 1' },
-      { id: 'chat-2', name: 'Chat 2' },
-      { id: 'chat-3', name: 'Chat 3' },
-    ];
-  });
+  // Array สำหรับเก็บรายการ chats - ดึงจาก API
+  const [chats, setChats] = useState([]);
 
   // State สำหรับแก้ไขชื่อ chat
   const [editingChatId, setEditingChatId] = useState(null);
@@ -62,19 +48,20 @@ function Sidebar({ onCollapseChange }) {
   };
 
   // ฟังก์ชันสำหรับบันทึกชื่อ chat ที่แก้ไข
-  const saveChatName = (chatId, e) => {
+  const saveChatName = async (chatId, e) => {
     e.stopPropagation();
     if (editingName.trim()) {
-      const updatedChats = chats.map(chat => 
-        chat.id === chatId 
-          ? { ...chat, name: editingName.trim() }
-          : chat
-      );
-      setChats(updatedChats);
-      // บันทึกลง localStorage
-      localStorage.setItem('chats', JSON.stringify(updatedChats));
-      // Trigger custom event เพื่ออัพเดท Chat page
-      window.dispatchEvent(new Event('chatUpdated'));
+      try {
+        // Update chat name via API
+        await chatAPI.updateChat(chatId, editingName.trim());
+        // Refresh chats from API
+        await loadChats();
+        // Trigger custom event เพื่ออัพเดท Chat page
+        window.dispatchEvent(new Event('chatUpdated'));
+      } catch (error) {
+        console.error('Error updating chat name:', error);
+        alert('ไม่สามารถอัพเดทชื่อแชทได้');
+      }
     }
     setEditingChatId(null);
     setEditingName('');
@@ -95,32 +82,73 @@ function Sidebar({ onCollapseChange }) {
     setOpenMenuId(null);
   };
 
-  const handleConfirmDelete = () => {
+  const handleConfirmDelete = async () => {
     if (chatToDelete) {
-      const updatedChats = chats.filter(chat => chat.id !== chatToDelete);
-      setChats(updatedChats);
-      localStorage.setItem('chats', JSON.stringify(updatedChats));
-      window.dispatchEvent(new Event('chatUpdated'));
-      
-      // ถ้า chat ที่ลบเป็น chat ที่กำลังเปิดอยู่ ให้ navigate ไปที่ homepage
-      if (location.pathname === `/chat/${chatToDelete}`) {
-        navigate('/homepage');
+      try {
+        // Delete chat via API
+        await chatAPI.deleteChat(chatToDelete);
+        // Refresh chats from API
+        await loadChats();
+        window.dispatchEvent(new Event('chatUpdated'));
+        
+        // ถ้า chat ที่ลบเป็น chat ที่กำลังเปิดอยู่ ให้ navigate ไปที่ homepage
+        if (location.pathname === `/chat/${chatToDelete}`) {
+          navigate('/homepage');
+        }
+      } catch (error) {
+        console.error('Error deleting chat:', error);
+        alert('ไม่สามารถลบแชทได้');
       }
       setChatToDelete(null);
     }
   };
 
+  // ฟังก์ชันสำหรับโหลด chats จาก API
+  const loadChats = async () => {
+    // ตรวจสอบว่ามี token หรือไม่ก่อนเรียก API
+    const token = localStorage.getItem('authToken');
+    if (!token) {
+      // ไม่มี token - ไม่ต้องโหลด chats (user ยังไม่ได้ login)
+      setChats([]);
+      return;
+    }
+
+    try {
+      const chatsData = await chatAPI.getChats();
+      // แปลง id จาก number เป็น string เพื่อให้เข้ากับ routing
+      const formattedChats = chatsData.map(chat => ({
+        ...chat,
+        id: String(chat.id)
+      }));
+      setChats(formattedChats);
+    } catch (error) {
+      // Handle 401 - token หมดอายุหรือไม่ถูกต้อง
+      if (error.response?.status === 401) {
+        // Token หมดอายุหรือไม่ถูกต้อง - clear และไม่ต้อง redirect (response interceptor จะจัดการ)
+        localStorage.removeItem('authToken');
+        setChats([]);
+      } else {
+        console.error('Error loading chats:', error);
+        setChats([]);
+      }
+    }
+  };
+
+  // โหลด chats เมื่อ component mount (เฉพาะเมื่อมี token)
+  useEffect(() => {
+    const token = localStorage.getItem('authToken');
+    if (token) {
+      loadChats();
+    }
+  }, []);
+
   // ฟัง event เมื่อมีการสร้างแชทใหม่จากหน้า homepage
   useEffect(() => {
     const handleChatsUpdated = () => {
-      const storedChats = localStorage.getItem('chats');
-      if (storedChats) {
-        try {
-          const updatedChats = JSON.parse(storedChats);
-          setChats(updatedChats);
-        } catch (error) {
-          console.error('Error parsing chats:', error);
-        }
+      // ตรวจสอบ token ก่อนโหลด
+      const token = localStorage.getItem('authToken');
+      if (token) {
+        loadChats();
       }
     };
 

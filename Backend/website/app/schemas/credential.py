@@ -7,24 +7,24 @@ from datetime import datetime
 
 class CredentialBase(BaseModel):
     """Base credential schema"""
-    username: str
+    username: str = Field(..., min_length=3, max_length=50, description="Username (3-50 characters)")
 
 
 class CredentialCreate(CredentialBase):
     """Schema for creating credentials"""
-    password: str
+    password: str = Field(..., min_length=6, max_length=128, description="Password (6-128 characters)")
 
 
 class CredentialUpdate(BaseModel):
     """Schema for updating credentials"""
-    username: str | None = None
-    password: str | None = None
+    username: str | None = Field(None, min_length=3, max_length=50, description="Username (3-50 characters)")
+    password: str | None = Field(None, min_length=6, max_length=128, description="Password (6-128 characters)")
 
 
 class ChangePasswordRequest(BaseModel):
     """Schema for changing password (requires old password verification)"""
-    old_password: str = Field(..., min_length=1, description="Current password for verification")
-    new_password: str = Field(..., min_length=6, description="New password (minimum 6 characters)")
+    old_password: str = Field(..., min_length=1, max_length=128, description="Current password for verification")
+    new_password: str = Field(..., min_length=6, max_length=128, description="New password (6-128 characters)")
 
 
 class ChangePasswordResponse(BaseModel):

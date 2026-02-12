@@ -9,30 +9,30 @@ from app.schemas.credential import CredentialResponse
 
 class UserBase(BaseModel):
     """Base user schema"""
-    email: EmailStr
+    email: EmailStr = Field(..., max_length=255, description="User email address")
 
 
 class UserCreate(UserBase):
     """Schema for creating a user"""
     # Credential fields
-    username: str
-    password: str
+    username: str = Field(..., min_length=3, max_length=50, description="Username (3-50 characters)")
+    password: str = Field(..., min_length=6, max_length=128, description="Password (6-128 characters)")
     # Profile fields
-    firstName: Optional[str] = None
-    lastName: Optional[str] = None
+    firstName: Optional[str] = Field(None, max_length=100, description="First name (max 100 characters)")
+    lastName: Optional[str] = Field(None, max_length=100, description="Last name (max 100 characters)")
 
 
 class UserRegister(BaseModel):
     """Schema for user registration (simplified - only email and full name)"""
-    email: EmailStr
-    fullName: Optional[str] = None  # Full name that will be split into firstName and lastName
+    email: EmailStr = Field(..., max_length=255, description="User email address")
+    fullName: Optional[str] = Field(None, max_length=200, description="Full name (max 200 characters)")
 
 
 class UserUpdate(BaseModel):
     """Schema for updating a user (profile info only)"""
-    email: Optional[EmailStr] = None
-    firstName: Optional[str] = None
-    lastName: Optional[str] = None
+    email: Optional[EmailStr] = Field(None, max_length=255, description="User email address")
+    firstName: Optional[str] = Field(None, max_length=100, description="First name (max 100 characters)")
+    lastName: Optional[str] = Field(None, max_length=100, description="Last name (max 100 characters)")
 
     class Config:
         # Pydantic v2: Use model_config instead of Config class
@@ -43,8 +43,8 @@ class UserUpdate(BaseModel):
 
 class UserLogin(BaseModel):
     """Schema for user login"""
-    email: EmailStr
-    password: str
+    email: EmailStr = Field(..., max_length=255, description="User email address")
+    password: str = Field(..., min_length=1, max_length=128, description="Password")
 
 
 class UserResponse(UserBase):
@@ -65,29 +65,29 @@ class UserResponse(UserBase):
 
 class VerifyEmailRequest(BaseModel):
     """Schema for email verification"""
-    token: str
+    token: str = Field(..., min_length=1, max_length=500, description="Verification token")
 
 
 class SetPasswordRequest(BaseModel):
     """Schema for setting password after email verification"""
-    token: str
-    password: str = Field(..., min_length=6, description="Password (minimum 6 characters)")
+    token: str = Field(..., min_length=1, max_length=500, description="Verification token")
+    password: str = Field(..., min_length=6, max_length=128, description="Password (6-128 characters)")
 
 
 class ResendVerificationRequest(BaseModel):
     """Schema for resending verification email"""
-    email: EmailStr
+    email: EmailStr = Field(..., max_length=255, description="User email address")
 
 
 class ForgotPasswordRequest(BaseModel):
     """Schema for requesting password reset"""
-    email: EmailStr
+    email: EmailStr = Field(..., max_length=255, description="User email address")
 
 
 class ResetPasswordRequest(BaseModel):
     """Schema for resetting password with token"""
-    token: str
-    password: str = Field(..., min_length=6, description="New password (minimum 6 characters)")
+    token: str = Field(..., min_length=1, max_length=500, description="Password reset token")
+    password: str = Field(..., min_length=6, max_length=128, description="New password (6-128 characters)")
 
 
 class ForgotPasswordResponse(BaseModel):

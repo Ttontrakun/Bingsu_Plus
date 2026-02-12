@@ -1,7 +1,7 @@
 """
 Chat schemas for request/response validation
 """
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Optional, List
 from app.schemas.user import UserResponse
@@ -9,17 +9,17 @@ from app.schemas.user import UserResponse
 
 class ChatBase(BaseModel):
     """Base chat schema"""
-    name: Optional[str] = None
+    name: Optional[str] = Field(None, max_length=200, description="Chat name (max 200 characters)")
 
 
 class ChatCreate(ChatBase):
     """Schema for creating a chat"""
-    user_ids: List[int] = []  # Users to add to chat
+    user_ids: List[int] = Field(default_factory=list, max_items=100, description="List of user IDs to add to chat (max 100)")
 
 
 class ChatUpdate(BaseModel):
     """Schema for updating a chat"""
-    name: Optional[str] = None
+    name: Optional[str] = Field(None, max_length=200, description="Chat name (max 200 characters)")
 
 
 class ChatUserResponse(BaseModel):

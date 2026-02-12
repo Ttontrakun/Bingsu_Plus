@@ -1,7 +1,7 @@
 """
 Chat message schemas for request/response validation
 """
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from datetime import datetime
 from typing import Optional
 from app.schemas.user import UserResponse
@@ -9,7 +9,7 @@ from app.schemas.user import UserResponse
 
 class ChatMessageBase(BaseModel):
     """Base chat message schema"""
-    message: str
+    message: str = Field(..., min_length=1, max_length=10000, description="Message content (1-10000 characters)")
 
 
 class ChatMessageCreate(ChatMessageBase):
@@ -19,7 +19,7 @@ class ChatMessageCreate(ChatMessageBase):
 
 class ChatMessageUpdate(BaseModel):
     """Schema for updating a chat message"""
-    message: str
+    message: str = Field(..., min_length=1, max_length=10000, description="Message content (1-10000 characters)")
 
 
 class ChatMessageResponse(ChatMessageBase):
@@ -27,6 +27,7 @@ class ChatMessageResponse(ChatMessageBase):
     id: int
     chatId: int
     userId: int
+    isAiGenerated: bool = False
     createdAt: datetime
     updatedAt: datetime
     sender: Optional[UserResponse] = None

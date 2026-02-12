@@ -77,6 +77,7 @@ class ChatMessage(Base):
     chatId = Column(Integer, ForeignKey("Chat.id", ondelete="CASCADE"), nullable=False, index=True)
     userId = Column(Integer, ForeignKey("User.id", ondelete="CASCADE"), nullable=False, index=True)  # Sender
     message = Column(String, nullable=False)
+    isAiGenerated = Column(Boolean, default=False, nullable=False)  # Mark if message is AI generated
     createdAt = Column(DateTime(timezone=True), server_default=func.now())
     updatedAt = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
 

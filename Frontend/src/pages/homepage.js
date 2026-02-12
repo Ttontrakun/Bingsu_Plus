@@ -8,6 +8,7 @@ import {
 import bingsuLogo from '../assets/images/หน่องบิงไม่มีพื้นละ.png';
 import Sidebar from '../components/Sidebar';
 import Dropdown from '../components/Dropdown';
+import { chatAPI } from '../services/api';
 
 function Homepage() {
   const navigate = useNavigate();
@@ -16,137 +17,37 @@ function Homepage() {
   const [chatInput, setChatInput] = useState('');
 
   // ฟังก์ชันสำหรับสร้างแชทใหม่
-  const createNewChat = (firstMessage) => {
-    // ดึงแชทที่มีอยู่จาก localStorage
-    const storedChats = localStorage.getItem('chats');
-    let existingChats = [];
-    
-    if (storedChats) {
-      try {
-        const parsed = JSON.parse(storedChats);
-        // ตรวจสอบว่าเป็น array และมีข้อมูล
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          // ตรวจสอบว่าแต่ละ chat มี id และ name ที่ valid
-          existingChats = parsed.filter(chat => 
-            chat && 
-            typeof chat === 'object' && 
-            chat.id && 
-            typeof chat.id === 'string' &&
-            chat.name &&
-            typeof chat.name === 'string'
-          );
-          
-          // ถ้า filter แล้วไม่มี chat ที่ valid ให้ใช้ default
-          if (existingChats.length === 0) {
-            existingChats = [
-              { id: 'chat-1', name: 'Chat 1' },
-              { id: 'chat-2', name: 'Chat 2' },
-              { id: 'chat-3', name: 'Chat 3' },
-            ];
-            try {
-              localStorage.setItem('chats', JSON.stringify(existingChats));
-            } catch (storageError) {
-              console.error('Error saving default chats:', storageError);
-            }
-          }
-        } else {
-          // ถ้าไม่ใช่ array หรือว่างเปล่า ให้ใช้ default chats
-          existingChats = [
-            { id: 'chat-1', name: 'Chat 1' },
-            { id: 'chat-2', name: 'Chat 2' },
-            { id: 'chat-3', name: 'Chat 3' },
-          ];
-          // บันทึก default chats ลง localStorage
-          try {
-            localStorage.setItem('chats', JSON.stringify(existingChats));
-          } catch (storageError) {
-            console.error('Error saving default chats:', storageError);
-          }
-        }
-      } catch (error) {
-        console.error('Error parsing chats:', error);
-        // ถ้า parse ไม่ได้ ให้ใช้ default chats
-        existingChats = [
-          { id: 'chat-1', name: 'Chat 1' },
-          { id: 'chat-2', name: 'Chat 2' },
-          { id: 'chat-3', name: 'Chat 3' },
-        ];
-        // บันทึก default chats ลง localStorage
-        try {
-          localStorage.setItem('chats', JSON.stringify(existingChats));
-        } catch (storageError) {
-          console.error('Error saving default chats:', storageError);
-        }
-      }
-    } else {
-      // ถ้ายังไม่มีแชทใน localStorage ให้ใช้ default chats
-      existingChats = [
-        { id: 'chat-1', name: 'Chat 1' },
-        { id: 'chat-2', name: 'Chat 2' },
-        { id: 'chat-3', name: 'Chat 3' },
-      ];
-      // บันทึก default chats ลง localStorage
-      try {
-        localStorage.setItem('chats', JSON.stringify(existingChats));
-      } catch (error) {
-        console.error('Error saving default chats:', error);
-      }
-    }
-
-    // หา chat number ที่ใหญ่ที่สุดเพื่อป้องกันการซ้ำ
-    let maxChatNumber = 0;
-    existingChats.forEach(chat => {
-      const match = chat.id.match(/^chat-(\d+)$/);
-      if (match) {
-        const num = parseInt(match[1], 10);
-        if (num > maxChatNumber) {
-          maxChatNumber = num;
-        }
-      }
-    });
-
-    // สร้างแชทใหม่ด้วย number ที่ไม่ซ้ำ
-    const newChatNumber = maxChatNumber + 1;
-    // Sanitize ชื่อแชท - ลบ special characters และจำกัดความยาว
-    let chatName = `Chat ${newChatNumber}`;
-    if (firstMessage && typeof firstMessage === 'string' && firstMessage.trim()) {
-      const sanitizedName = firstMessage
-        .trim()
-        .replace(/[<>]/g, '') // ลบ < และ >
-        .replace(/javascript:/gi, '') // ลบ javascript: protocol
-        .replace(/on\w+=/gi, '') // ลบ event handlers
-        .substring(0, 20);
-      chatName = sanitizedName || `Chat ${newChatNumber}`;
-      if (firstMessage.length > 20) {
-        chatName += '...';
-      }
-    }
-    
-    const newChat = {
-      id: `chat-${newChatNumber}`,
-      name: chatName
-    };
-
-    // เพิ่มแชทใหม่เข้าไปในรายการ (ไม่ลบแชทเก่า)
-    const updatedChats = [...existingChats, newChat];
-    
-    // บันทึกลง localStorage
+  const createNewChat = async (firstMessage) => {
     try {
-      localStorage.setItem('chats', JSON.stringify(updatedChats));
+      // Sanitize ชื่อแชท - ลบ special characters และจำกัดความยาว
+      let chatName = null; // null = auto-generate name
+      if (firstMessage && typeof firstMessage === 'string' && firstMessage.trim()) {
+        const sanitizedName = firstMessage
+          .trim()
+          .replace(/[<>]/g, '') // ลบ < และ >
+          .replace(/javascript:/gi, '') // ลบ javascript: protocol
+          .replace(/on\w+=/gi, '') // ลบ event handlers
+          .substring(0, 50); // จำกัดความยาว
+        if (sanitizedName) {
+          chatName = sanitizedName;
+          if (firstMessage.length > 50) {
+            chatName += '...';
+          }
+        }
+      }
+      
+      // สร้างแชทใหม่ผ่าน API
+      const newChat = await chatAPI.createChat(chatName, []);
+      
+      // ส่ง custom event เพื่อให้ Sidebar อัพเดท
+      window.dispatchEvent(new CustomEvent('chatsUpdated'));
+      
+      // Navigate ไปที่แชทใหม่ทันที (ให้ Chat.js จัดการส่งข้อความและ bot response)
+      navigate(`/chat/${newChat.id}`, { state: { firstMessage: firstMessage?.trim() } });
     } catch (error) {
-      console.error('Error saving chat to localStorage:', error);
-      // ถ้าบันทึกไม่สำเร็จ ให้แสดง error แต่ยัง navigate ต่อไป
+      console.error('Error creating chat:', error);
+      alert('ไม่สามารถสร้างแชทใหม่ได้ กรุณาลองอีกครั้ง');
     }
-    
-    // ส่ง custom event เพื่อให้ Sidebar อัพเดท
-    window.dispatchEvent(new CustomEvent('chatsUpdated'));
-    
-    // Navigate ไปที่แชทใหม่พร้อมข้อความแรก
-    navigate(`/chat/${newChat.id}`, { 
-      state: { 
-        firstMessage: firstMessage 
-      } 
-    });
   };
 
   // ฟังก์ชันสำหรับจัดการการส่งข้อความ

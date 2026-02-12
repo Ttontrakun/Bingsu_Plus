@@ -1,0 +1,73 @@
+services:
+  # PostgreSQL Database Service
+  postgres:
+    image: postgres:15-alpine
+    container_name: bingsu_postgres
+    environment:
+      POSTGRES_USER: Bingsu_Db_Admin
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-Bingsu_Password123}
+      POSTGRES_DB: BS_DB
+    ports:
+      - "5433:5432"  # Changed external port to 5433 to avoid conflict with local PostgreSQL
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      # Mount SQL files directory - files in /docker-entrypoint-initdb.d/ will run automatically
+      - ./Backend/DATABASE/init:/docker-entrypoint-initdb.d
+    networks:
+      - bingsu_network
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U Bingsu_Db_Admin -d BS_DB"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # Backend API (FastAPI)
+  backend:
+    build:
+      context: ./Backend/website
+      dockerfile: Dockerfile
+    container_name: bingsu_backend
+    environment:
+      DATABASE_URL: postgresql+psycopg://Bingsu_Db_Admin:${POSTGRES_PASSWORD:-Bingsu_Password123}@postgres:5432/BS_DB
+      ENV: ${ENV:-production}
+      ENABLE_GZIP: ${ENABLE_GZIP:-true}
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - bingsu_network
+    volumes:
+      - ./Backend/website:/app
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    restart: unless-stopped
+
+  # Frontend (React)
+  frontend:
+    build:
+      context: ./Frontend
+      dockerfile: Dockerfile
+    container_name: bingsu_frontend
+    environment:
+      REACT_APP_API_BASE_URL: http://localhost:8000
+      REACT_APP_API_TIMEOUT: 30000
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - bingsu_network
+    volumes:
+      - ./Frontend:/app
+      - /app/node_modules
+    restart: unless-stopped
+
+volumes:
+  postgres_data:
+    driver: local
+
+networks:
+  bingsu_network:
+    driver: bridge

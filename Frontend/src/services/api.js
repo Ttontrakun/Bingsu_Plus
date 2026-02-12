@@ -29,6 +29,17 @@ export const getErrorMessage = (error) => {
         return 'เกิดข้อผิดพลาด';
     }
 
+    // Handle 429 Too Many Requests (Rate Limiting)
+    if (error.response?.status === 429) {
+        const retryAfter = error.response.headers['retry-after'];
+        if (retryAfter) {
+            const seconds = parseInt(retryAfter, 10);
+            const minutes = Math.ceil(seconds / 60);
+            return `คุณพยายามเข้าสู่ระบบบ่อยเกินไป กรุณารอ ${minutes} นาที แล้วลองอีกครั้ง`;
+        }
+        return 'คุณพยายามเข้าสู่ระบบบ่อยเกินไป กรุณารอสักครู่แล้วลองอีกครั้ง';
+    }
+
     // If error has response data
     if (error.response?.data) {
         const data = error.response.data;
@@ -78,12 +89,39 @@ api.interceptors.response.use(
     (error) => {
         // Handle 401 Unauthorized - clear token and redirect to login
         if (error.response?.status === 401) {
+            const publicPaths = ['/auth', '/verifying', '/forgot-password', '/reset-password', '/create-password'];
+            const currentPath = window.location.pathname;
+            
+            // Clear token and user data
             localStorage.removeItem('authToken');
-            // Optionally redirect to login page
-            if (window.location.pathname !== '/auth') {
-                window.location.href = '/auth';
+            localStorage.removeItem('user');
+            
+            // Only redirect if not on a public page
+            if (!publicPaths.some(path => currentPath.startsWith(path))) {
+                // Use setTimeout to avoid redirect during render
+                setTimeout(() => {
+                    const newPath = window.location.pathname;
+                    // Double check we're not on a public path before redirecting
+                    if (!publicPaths.some(path => newPath.startsWith(path)) && newPath !== '/auth') {
+                        window.location.href = '/auth';
+                    }
+                }, 100);
             }
         }
+        
+        // Handle 429 Too Many Requests (Rate Limiting)
+        // Don't reject immediately - let the component handle the error message
+        // This allows us to show user-friendly messages
+        if (error.response?.status === 429) {
+            // The error will be handled by getErrorMessage() in the component
+            // We just ensure it's properly formatted
+            if (!error.response.data || !error.response.data.detail) {
+                error.response.data = {
+                    detail: 'คุณพยายามเข้าสู่ระบบบ่อยเกินไป กรุณารอสักครู่แล้วลองอีกครั้ง'
+                };
+            }
+        }
+        
         return Promise.reject(error);
     }
 );
@@ -268,6 +306,132 @@ export const userAPI = {
             throw new Error('Invalid user ID');
         }
         const response = await api.put(`/users/${userIdInt}/reject`);
+        return response.data;
+    },
+};
+
+// Chat API functions
+export const chatAPI = {
+    // Get all chats for current user
+    getChats: async (skip = 0, limit = 100) => {
+        const response = await api.get('/chats', {
+            params: { skip, limit }
+        });
+        return response.data;
+    },
+
+    // Get chat by ID
+    getChat: async (chatId) => {
+        const chatIdInt = typeof chatId === 'string' ? parseInt(chatId, 10) : chatId;
+        if (isNaN(chatIdInt)) {
+            throw new Error('Invalid chat ID');
+        }
+        const response = await api.get(`/chats/${chatIdInt}`);
+        return response.data;
+    },
+
+    // Create a new chat
+    createChat: async (name, user_ids = []) => {
+        const response = await api.post('/chats', {
+            name: name || null,
+            user_ids: user_ids
+        });
+        return response.data;
+    },
+
+    // Update chat
+    updateChat: async (chatId, name) => {
+        const chatIdInt = typeof chatId === 'string' ? parseInt(chatId, 10) : chatId;
+        if (isNaN(chatIdInt)) {
+            throw new Error('Invalid chat ID');
+        }
+        const response = await api.put(`/chats/${chatIdInt}`, {
+            name: name || null
+        });
+        return response.data;
+    },
+
+    // Delete chat
+    deleteChat: async (chatId) => {
+        const chatIdInt = typeof chatId === 'string' ? parseInt(chatId, 10) : chatId;
+        if (isNaN(chatIdInt)) {
+            throw new Error('Invalid chat ID');
+        }
+        const response = await api.delete(`/chats/${chatIdInt}`);
+        return response.data;
+    },
+};
+
+// Chat Message API functions
+export const chatMessageAPI = {
+    // Get all messages in a chat
+    getMessages: async (chatId, skip = 0, limit = 100) => {
+        const chatIdInt = typeof chatId === 'string' ? parseInt(chatId, 10) : chatId;
+        if (isNaN(chatIdInt)) {
+            throw new Error('Invalid chat ID');
+        }
+        const response = await api.get(`/chats/${chatIdInt}/messages`, {
+            params: { skip, limit }
+        });
+        return response.data;
+    },
+
+    // Get message by ID
+    getMessage: async (chatId, messageId) => {
+        const chatIdInt = typeof chatId === 'string' ? parseInt(chatId, 10) : chatId;
+        const messageIdInt = typeof messageId === 'string' ? parseInt(messageId, 10) : messageId;
+        if (isNaN(chatIdInt) || isNaN(messageIdInt)) {
+            throw new Error('Invalid chat ID or message ID');
+        }
+        const response = await api.get(`/chats/${chatIdInt}/messages/${messageIdInt}`);
+        return response.data;
+    },
+
+    // Create a new message
+    createMessage: async (chatId, message) => {
+        const chatIdInt = typeof chatId === 'string' ? parseInt(chatId, 10) : chatId;
+        if (isNaN(chatIdInt)) {
+            throw new Error('Invalid chat ID');
+        }
+        const response = await api.post(`/chats/${chatIdInt}/messages`, {
+            message: message
+        });
+        return response.data;
+    },
+
+    // Update message
+    updateMessage: async (chatId, messageId, message) => {
+        const chatIdInt = typeof chatId === 'string' ? parseInt(chatId, 10) : chatId;
+        const messageIdInt = typeof messageId === 'string' ? parseInt(messageId, 10) : messageId;
+        if (isNaN(chatIdInt) || isNaN(messageIdInt)) {
+            throw new Error('Invalid chat ID or message ID');
+        }
+        const response = await api.put(`/chats/${chatIdInt}/messages/${messageIdInt}`, {
+            message: message
+        });
+        return response.data;
+    },
+
+    // Delete message
+    deleteMessage: async (chatId, messageId) => {
+        const chatIdInt = typeof chatId === 'string' ? parseInt(chatId, 10) : chatId;
+        const messageIdInt = typeof messageId === 'string' ? parseInt(messageId, 10) : messageId;
+        if (isNaN(chatIdInt) || isNaN(messageIdInt)) {
+            throw new Error('Invalid chat ID or message ID');
+        }
+        const response = await api.delete(`/chats/${chatIdInt}/messages/${messageIdInt}`);
+        return response.data;
+    },
+
+    // Create bot response
+    createBotResponse: async (chatId, message) => {
+        const chatIdInt = typeof chatId === 'string' ? parseInt(chatId, 10) : chatId;
+        if (isNaN(chatIdInt)) {
+            throw new Error('Invalid chat ID');
+        }
+        const response = await api.post(`/chats/${chatIdInt}/messages/bot-response`, {
+            message: message
+        });
         return response.data;
     },
 };

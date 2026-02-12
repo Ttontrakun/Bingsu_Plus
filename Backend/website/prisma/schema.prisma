@@ -78,12 +78,13 @@ model ChatUser {
 
 // Message in a chat room
 model ChatMessage {
-  id        Int      @id @default(autoincrement())
-  chatId    Int
-  userId    Int      // Sender
-  message   String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  id            Int      @id @default(autoincrement())
+  chatId        Int
+  userId        Int      // Sender
+  message       String
+  isAiGenerated Boolean  @default(false)  // Mark if message is AI generated
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
 
   chat      Chat     @relation(fields: [chatId], references: [id], onDelete: Cascade)
   sender    User     @relation(fields: [userId], references: [id], onDelete: Cascade)

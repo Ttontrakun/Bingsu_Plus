@@ -85,8 +85,15 @@ function Auth() {
       // Redirect to homepage
       navigate('/homepage');
     } catch (error) {
-      // Handle error
-      const errorMessage = getErrorMessage(error) || 'Login failed. Please try again.';
+      // Handle error with special handling for rate limiting
+      let errorMessage = getErrorMessage(error) || 'Login failed. Please try again.';
+      
+      // Special handling for rate limiting (429) - show user-friendly message
+      if (error.response?.status === 429) {
+        errorMessage = error.response?.data?.detail || 
+          'คุณพยายามเข้าสู่ระบบบ่อยเกินไป กรุณารอสักครู่แล้วลองอีกครั้ง';
+      }
+      
       setSignInError(errorMessage);
     } finally {
       setSignInLoading(false);
