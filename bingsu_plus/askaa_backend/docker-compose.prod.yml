@@ -34,13 +34,11 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-      # Optional: allow local overrides without committing secrets
       - .env.local
     volumes:
       - uploads_data:/app/uploads
       - uploads_tmp:/app/.uploads
     environment:
-      # Override hostnames for in-docker networking
       - PORT=5052
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/ask_the_manual?schema=public
       - REDIS_URL=redis://redis:6379
@@ -48,10 +46,10 @@ services:
       - UPLOAD_QUEUE_MODE=redis
       - OCR_API_URL=http://api:8000
       - OCR_ENABLED=true
-      # Frontend is served by `web` on port 80. Override via .env/.env.local if needed.
-      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost,http://127.0.0.1}
-      # Privacy: keep only extracted text + embeddings (no original file storage)
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost,http://127.0.0.1,http://192.168.1.8}
       - STORE_RAW_FILES=false
+      # สมัครแล้วล็อกอินได้ทันที (ปิดได้เมื่อต้องการให้แอดมินอนุมัติก่อน)
+      - ALLOW_SIGNUP_AUTO_APPROVE=${ALLOW_SIGNUP_AUTO_APPROVE:-true}
     depends_on:
       postgres:
         condition: service_healthy
@@ -101,11 +99,11 @@ services:
     restart: unless-stopped
     env_file:
       - .env
-      # Optional: allow local overrides without committing secrets
       - .env.local
     environment:
       - PORT=8000
       - LEGACY_API_URL=http://legacy:5052
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost,http://127.0.0.1,http://192.168.1.8}
     depends_on:
       - legacy
 
@@ -118,7 +116,7 @@ services:
     depends_on:
       - api
     ports:
-      - "80:80"
+      - "0.0.0.0:80:80"
 
 volumes:
   postgres_data:

@@ -163,6 +163,12 @@ docker compose -f docker-compose.prod.yml up -d --build
 API:
 - `http://<server-ip>/api/*`
 
+**บัญชีแอดมิน (ต้อง seed ก่อน):** หลัง deploy ครั้งแรกให้รัน seed เพื่อสร้าง admin/support:
+```bash
+docker compose -f docker-compose.prod.yml exec legacy node server/scripts/seed-admins.js
+```
+จากนั้นล็อกอินด้วย `admin@admin.com` / `admin1234`
+
 ---
 
 ## Troubleshooting

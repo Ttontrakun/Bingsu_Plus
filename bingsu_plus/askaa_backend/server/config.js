@@ -97,6 +97,8 @@ export const TEXT_CHUNK_SIZE = Number(process.env.TEXT_CHUNK_SIZE || 1800);
 export const TEXT_CHUNK_OVERLAP = Number(process.env.TEXT_CHUNK_OVERLAP || 100);
 export const RAG_TIMEOUT_MS = Number(process.env.RAG_TIMEOUT_MS || 2000);
 export const requireEmailVerification = (process.env.REQUIRE_EMAIL_VERIFICATION || "false") === "true";
+/** When true, new signups get approvalStatus "approved" and can login immediately (for dev/demo). */
+export const allowSignupAutoApprove = (process.env.ALLOW_SIGNUP_AUTO_APPROVE || "false") === "true";
 export const emailVerificationTokenTtlHours = Number(process.env.EMAIL_VERIFICATION_TOKEN_TTL_HOURS || 24);
 export const passwordResetTokenTtlHours = Number(process.env.PASSWORD_RESET_TOKEN_TTL_HOURS || 2);
 const parseJsonEnv = (value) => {

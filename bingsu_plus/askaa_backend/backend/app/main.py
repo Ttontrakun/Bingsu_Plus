@@ -17,7 +17,11 @@ app = FastAPI(title="ask_AA API", version="0.1.0")
 
 cors_origins_env = os.getenv("CORS_ORIGINS", "")
 cors_origins = [o.strip() for o in cors_origins_env.split(",") if o.strip()]
-dev_defaults = ["http://localhost:3000", "http://127.0.0.1:3000"]
+# Dev (port 3000) and prod (port 80 / nginx); add LAN IP in .env if needed (e.g. http://192.168.1.8)
+dev_defaults = [
+    "http://localhost:3000", "http://127.0.0.1:3000",
+    "http://localhost", "http://127.0.0.1",
+]
 origins = list(dict.fromkeys([*cors_origins, *dev_defaults]))
 
 app.add_middleware(
@@ -224,20 +228,28 @@ async def proxy_to_legacy(path: str, request: Request) -> Response:
     - Any /api/* route not yet implemented here is proxied to the legacy service.
     """
 
-    # If you add more native FastAPI routes under /api, they will take precedence.
     upstream_url = f"{LEGACY_API_URL}/api/{path}"
     if request.url.query:
         upstream_url = f"{upstream_url}?{request.url.query}"
 
     body = await request.body()
     headers = _filter_outgoing_headers(dict(request.headers))
+    # Legacy may expect Host; use the upstream host so it doesn't depend on client Host
+    headers["Host"] = (LEGACY_API_URL or "").replace("https://", "").replace("http://", "").split("/")[0] or "legacy"
 
-    async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
-        upstream = await client.request(
-            request.method,
-            upstream_url,
-            content=body if body else None,
-            headers=headers,
+    try:
+        async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
+            upstream = await client.request(
+                request.method,
+                upstream_url,
+                content=body if body else None,
+                headers=headers,
+            )
+    except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout) as e:
+        return Response(
+            content=b'{"error":"Legacy backend ไม่ตอบสนอง (เชื่อมต่อไม่ได้). ลองรอสักครู่แล้วรีเฟรช หรือตรวจสอบ Docker: legacy, postgres, redis, qdrant."}',
+            status_code=503,
+            media_type="application/json",
         )
 
     response_headers = _filter_outgoing_headers(dict(upstream.headers))

@@ -34,6 +34,12 @@ const api = axios.create({
     },
 });
 
+// ให้ทุก request ใช้ origin ของหน้าปัจจุบัน (เปิดจาก 192.168.1.8 ก็เรียก 192.168.1.8/api)
+api.interceptors.request.use((config) => {
+    config.baseURL = API_CONFIG.baseURL;
+    return config;
+});
+
 const SESSION_KEY = 'sessionToken';
 
 export const setSessionToken = (token) => {
@@ -67,7 +73,18 @@ export const getErrorMessage = (error) => {
         return 'เกิดข้อผิดพลาด';
     }
 
-    // If error has response data
+    // Server responded but with error status (e.g. 502 Bad Gateway, 503)
+    const status = error.response?.status;
+    if (error.response != null && status >= 500) {
+        const body = error.response.data;
+        const text = typeof body === 'string' ? body.slice(0, 80) : (body?.message || body?.detail || body?.error);
+        if (text && typeof text === 'string' && !text.startsWith('<')) {
+            return `เซิร์ฟเวอร์ตอบ ${status}: ${text}`;
+        }
+        return `เซิร์ฟเวอร์ตอบ ${status} — backend อาจยังไม่พร้อม ลองรีเฟรชหรือตรวจสอบ Docker (api/legacy)`;
+    }
+
+    // If error has response data (4xx etc.)
     if (error.response?.data) {
         const data = error.response.data;
         
@@ -118,8 +135,10 @@ export const getErrorMessage = (error) => {
     // Handle request error (no response) = backend ไม่ตอบหรือ CORS/proxy ผิด
     if (error.request) {
         const code = error.code || '';
+        const base = API_CONFIG.baseURL || (typeof window !== 'undefined' ? window.location.origin : '');
+        const tryUrl = base ? `${base.replace(/\/$/, '')}/api/health` : '/api/health';
         const msg = code ? `(${code}) ` : '';
-        return msg + 'เชื่อมต่อ backend ไม่ได้ — กรุณาเปิด backend (Docker + npm run dev:legacy + npm run dev:fastapi) แล้วรีเฟรช';
+        return msg + 'เชื่อมต่อ backend ไม่ได้ — ลองเปิด ' + tryUrl + ' ในเบราว์เซอร์ว่าตอบหรือไม่ แล้วรีเฟรชหน้านี้';
     }
     
     // Handle other errors

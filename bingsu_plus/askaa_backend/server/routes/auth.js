@@ -18,6 +18,7 @@ import {
   passwordResetTokenTtlHours,
   requireEmailVerification,
   isProduction,
+  allowSignupAutoApprove,
 } from "../config.js";
 
 export const authRouter = express.Router();
@@ -62,10 +63,8 @@ authRouter.post("/signup", async (req, res) => {
       email,
       passwordHash,
       name,
-      // UX for local/dev:
-      // - In production, new users must be approved by support/admin.
-      // - In dev, allow signups to log in immediately.
-      approvalStatus: isProduction ? "pending" : "approved",
+      // In production, new users are "pending" unless ALLOW_SIGNUP_AUTO_APPROVE=true (dev/demo).
+      approvalStatus: isProduction && !allowSignupAutoApprove ? "pending" : "approved",
       emailVerifiedAt: requireEmailVerification ? null : new Date(),
       emailVerificationToken: verificationToken ? hashToken(verificationToken) : null,
       emailVerificationExpiresAt: verificationToken

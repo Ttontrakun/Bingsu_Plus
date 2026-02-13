@@ -55,14 +55,20 @@ docker compose up -d --build
 - ปิด stack: `docker compose down`
 - ดู log: `docker compose logs -f`
 
-ถ้ายังไม่มี user ให้ seed ก่อน (รันคำสั่งใน container):
+ถ้ายังไม่มี user หรือ **แอดมินเข้าไม่ได้** ให้ seed บัญชีแอดมินก่อน (รันจากโฟลเดอร์ที่รัน Docker):
 
 ```bash
+# ถ้ารันจาก bingsu_plus ด้วย docker compose
 docker compose exec legacy node server/scripts/seed-admins.js
-docker compose exec legacy node server/scripts/seed-help-bot.js
+
+# ถ้ารัน Production จาก askaa_backend ด้วย docker-compose.prod.yml
+cd askaa_backend
+docker compose -f docker-compose.prod.yml exec legacy node server/scripts/seed-admins.js
 ```
 
-จากนั้นล็อกอินด้วยบัญชีที่ seed (เช่น `admin@admin.com` ตามที่ตั้งใน seed)
+(optional) seed help bot: `docker compose exec legacy node server/scripts/seed-help-bot.js`
+
+**บัญชีแอดมินหลัง seed:** อีเมล `admin@admin.com` รหัสผ่าน `admin1234` (Support: `support@support.com` / `support.com`)
 
 ---
 
@@ -382,6 +388,8 @@ Bingsu_Plus/
 
 | อาการ | แนวทางแก้ |
 |--------|------------|
+| **แอดมินเข้าไม่ได้ / ล็อกอิน admin ไม่ได้** | ยังไม่มี user ใน DB → รัน seed: `docker compose -f docker-compose.prod.yml exec legacy node server/scripts/seed-admins.js` (จากโฟลเดอร์ `askaa_backend`) แล้วล็อกอินด้วย `admin@admin.com` / `admin1234` |
+| **เปิดจาก IP (เช่น 192.168.1.8) แล้วขึ้น "เชื่อมต่อ backend ไม่ได้"** | เซิร์ฟเวอร์ต้องรับที่ทุก IP: ใน `docker-compose.prod.yml` ใช้ `0.0.0.0:80:80` แล้วรันใหม่; ถ้าเปิดจากเครื่องอื่นใน LAN ให้เปิด **Windows Firewall** อนุญาต Inbound พอร์ต **80** (TCP) สำหรับ Private/Domain |
 | **พอร์ตถูกใช้อยู่** (เช่น 5051, 5052, 3000) | ปิด process ที่ใช้พอร์ตนั้น หรือเปลี่ยนพอร์ตใน config |
 | **Login แล้วขึ้น Network error / Not Found** | ตรวจว่า Backend รันครบ (legacy + FastAPI) และ Frontend ชี้ไปที่ URL ที่ถูก (หรือใช้ proxy) |
 | **อัปโหลดเอกสารแล้วไม่ประมวลผล** | โหมด production ต้องมี `worker` รัน (รวมอยู่ใน `docker-compose.prod.yml`) และ `UPLOAD_QUEUE_MODE=redis` |

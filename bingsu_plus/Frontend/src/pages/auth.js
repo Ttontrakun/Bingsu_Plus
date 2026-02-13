@@ -1,13 +1,17 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { HiOutlineMail, HiLockClosed, HiOutlineUser, HiOutlineEye, HiOutlineEyeOff } from 'react-icons/hi';
 import ntLogo from '../assets/images/NT_Logo.png';
 import bingsuLogo from '../assets/images/หน่องบิงไม่มีพื้นละ.png';
-import { authAPI, getErrorMessage } from '../services/api';
+import { authAPI, getErrorMessage, healthCheck } from '../services/api';
 
 function Auth() {
   const navigate = useNavigate();
   const [isSignIn, setIsSignIn] = useState(true);
+  const [backendOk, setBackendOk] = useState(null);
+  useEffect(() => {
+    healthCheck().then(setBackendOk);
+  }, []);
 
   // Form states for Sign In
   const [signInEmail, setSignInEmail] = useState('');
@@ -151,6 +155,16 @@ function Auth() {
         </div>
 
         <div className="flex flex-col items-center pt-8 transition-all duration-500 ease-in-out overflow-hidden">
+          {backendOk === false && (
+            <div className="mb-3 w-full max-w-xs p-3 rounded-lg bg-amber-50 border border-amber-200">
+              <p className="text-xs text-amber-800">
+                เชื่อมต่อ backend ไม่ได้ — เปิดลิงก์นี้ในเบราว์เซอร์: <a href={`${window.location.origin}/api/health`} target="_blank" rel="noopener noreferrer" className="underline font-medium">{window.location.origin}/api/health</a>
+                {window.location.hostname !== 'localhost' && window.location.hostname !== '127.0.0.1' && (
+                  <span className="block mt-1">ถ้าเปิดจาก IP อื่น (เช่น 192.168.x.x) ให้ตรวจว่า Windows Firewall อนุญาตพอร์ต 80 แล้วรีเฟรช</span>
+                )}
+              </p>
+            </div>
+          )}
           {/* Logo */}
           <div className="mb-4 h-20 w-20 flex items-center justify-center rounded-full bg-yellow-100 transition-all duration-500 ease-in-out hover:scale-110 hover:rotate-6 cursor-default overflow-hidden">
             <img src={bingsuLogo} alt="BingSu Logo" className="w-full h-full object-cover rounded-full" />

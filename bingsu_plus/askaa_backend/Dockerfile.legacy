@@ -12,6 +12,9 @@ ENV NPM_CONFIG_AUDIT=false \
     NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=120000
 RUN npm ci --no-audit --no-fund
 
+# For Docker healthcheck
+RUN apk add --no-cache curl
+
 # Prisma schema + migrations
 COPY prisma ./prisma
 RUN npx prisma generate

@@ -46,6 +46,7 @@ app.use((req, res, next) => {
   next();
 });
 
+app.get("/api/ping", (_req, res) => res.status(200).json({ ok: true }));
 app.use("/api/health", healthRouter);
 app.get("/api/avatars/:filename", (req, res) => {
   const filename = req.params.filename;
