@@ -167,6 +167,11 @@ Desktop.ini
 .env.test.local
 .env.production.local
 
+# Local app uploaded/generated files (DO NOT commit)
+.files/
+.uploads/
+.pgdata/
+
 # Build directories
 Frontend/build/
 Backend/website/build/
