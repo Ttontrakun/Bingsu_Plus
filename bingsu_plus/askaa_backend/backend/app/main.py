@@ -13,7 +13,23 @@ from fastapi.responses import Response
 load_dotenv(".env.local")
 load_dotenv()
 
-app = FastAPI(title="ask_AA API", version="0.1.0")
+app = FastAPI(
+    title="ask_AA API (Bingsu Plus)",
+    version="0.1.0",
+    description="API: ระบบ, OCR, ล็อกอิน/สมาชิก, บอท, Knowledge (เอกสาร), แชท, อัปโหลด, โควต้า, สถิติ, Integrations (Admin/Support ยังเรียกได้ที่ /api/admin/*, /api/support/* แต่ไม่แสดงใน docs)",
+    openapi_tags=[
+        {"name": "ระบบ", "description": "ตรวจสอบสถานะ backend"},
+        {"name": "OCR", "description": "ดึงข้อความจากไฟล์ PDF หรือรูปภาพ"},
+        {"name": "Auth", "description": "ล็อกอิน สมัครสมาชิก ตรวจสอบอีเมล เปลี่ยนรหัส"},
+        {"name": "Bots", "description": "สร้าง/แก้ไข/ลบบอท"},
+        {"name": "Knowledge", "description": "ชุดความรู้ (เอกสาร) สร้าง/แก้ไข/ลบ/แชร์"},
+        {"name": "แชท", "description": "บทสนทนา ส่งข้อความ แชทกับบอท"},
+        {"name": "อัปโหลด", "description": "อัปโหลดไฟล์แบบแบ่งส่วน (batch)"},
+        {"name": "Subscription", "description": "โควต้าและการใช้งานรายวัน"},
+        {"name": "Stats", "description": "สถิติการใช้งาน"},
+        {"name": "Integrations", "description": "ตั้งค่า LINE / API integration"},
+    ],
+)
 
 cors_origins_env = os.getenv("CORS_ORIGINS", "")
 cors_origins = [o.strip() for o in cors_origins_env.split(",") if o.strip()]
@@ -33,7 +49,7 @@ app.add_middleware(
 )
 
 
-@app.get("/api/health")
+@app.get("/api/health", tags=["ระบบ"], summary="ตรวจสอบสถานะ", description="ใช้ตรวจว่า Backend ยังรันอยู่ ตอบ `{\"ok\": true}`")
 def health() -> dict:
     return {"ok": True}
 
@@ -156,7 +172,12 @@ def _run_typhoon_ocr_on_image(image: Any) -> str:
         return (text or "").strip()
 
 
-@app.post("/api/ocr/extract")
+@app.post(
+    "/api/ocr/extract",
+    tags=["OCR"],
+    summary="ดึงข้อความจาก PDF/รูป",
+    description="อัปโหลดไฟล์ PDF หรือรูปภาพ แล้วได้ข้อความที่ดึงออกมา (รองรับ PaddleOCR / Typhoon)",
+)
 async def ocr_extract(
     file: UploadFile = File(...),
     lang: str = DEFAULT_OCR_LANG,
@@ -220,34 +241,28 @@ async def ocr_extract(
     }
 
 
-@app.api_route("/api/{path:path}", methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"])
-async def proxy_to_legacy(path: str, request: Request) -> Response:
-    """
-    Temporary compatibility layer:
-    - FastAPI will gradually replace the old Node/Express API.
-    - Any /api/* route not yet implemented here is proxied to the legacy service.
-    """
-
-    upstream_url = f"{LEGACY_API_URL}/api/{path}"
+async def _proxy_forward(request: Request) -> Response:
+    """ส่งต่อ request ไปยัง Legacy (Node) — path มาจาก request.url.path"""
+    path = request.url.path.removeprefix("/api").lstrip("/")
+    upstream_url = f"{LEGACY_API_URL}/api/{path}" if path else f"{LEGACY_API_URL}/api"
     if request.url.query:
         upstream_url = f"{upstream_url}?{request.url.query}"
 
     body = await request.body()
     headers = _filter_outgoing_headers(dict(request.headers))
-    # Legacy may expect Host; use the upstream host so it doesn't depend on client Host
     headers["Host"] = (LEGACY_API_URL or "").replace("https://", "").replace("http://", "").split("/")[0] or "legacy"
 
     try:
-        async with httpx.AsyncClient(timeout=30.0, follow_redirects=False) as client:
+        async with httpx.AsyncClient(timeout=300.0, follow_redirects=False) as client:
             upstream = await client.request(
                 request.method,
                 upstream_url,
                 content=body if body else None,
                 headers=headers,
             )
-    except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout) as e:
+    except (httpx.ConnectError, httpx.ConnectTimeout, httpx.ReadTimeout):
         return Response(
-            content=b'{"error":"Legacy backend ไม่ตอบสนอง (เชื่อมต่อไม่ได้). ลองรอสักครู่แล้วรีเฟรช หรือตรวจสอบ Docker: legacy, postgres, redis, qdrant."}',
+            content='{"error":"Legacy backend ไม่ตอบสนอง (เชื่อมต่อไม่ได้)."}'.encode("utf-8"),
             status_code=503,
             media_type="application/json",
         )
@@ -259,4 +274,85 @@ async def proxy_to_legacy(path: str, request: Request) -> Response:
         headers=response_headers,
         media_type=upstream.headers.get("content-type"),
     )
+
+
+# รายการ Legacy API ทั้งหมด — แสดงใน Swagger และส่งต่อไปที่ Node
+_LEGACY_ROUTES = [
+    # Auth
+    ("POST", "auth/signup", "สมัครสมาชิก", "Auth"),
+    ("POST", "auth/login", "ล็อกอิน", "Auth"),
+    ("POST", "auth/verify-email", "ยืนยันอีเมล", "Auth"),
+    ("POST", "auth/resend-verification", "ส่งอีเมลยืนยันอีกครั้ง", "Auth"),
+    ("POST", "auth/request-password-reset", "ขอรีเซ็ตรหัสผ่าน", "Auth"),
+    ("POST", "auth/reset-password", "รีเซ็ตรหัสผ่าน", "Auth"),
+    ("POST", "auth/change-password", "เปลี่ยนรหัสผ่าน", "Auth"),
+    ("GET", "auth/me", "ดูข้อมูลผู้ใช้ปัจจุบัน", "Auth"),
+    ("PATCH", "auth/me", "อัปเดตโปรไฟล์", "Auth"),
+    ("POST", "auth/logout", "ล็อกเอาท์", "Auth"),
+    # Bots
+    ("GET", "bots", "รายการบอท", "Bots"),
+    ("POST", "bots", "สร้างบอท", "Bots"),
+    ("PATCH", "bots/{id}", "แก้ไขบอท", "Bots"),
+    ("DELETE", "bots/{id}", "ลบบอท", "Bots"),
+    # Documents (Knowledge)
+    ("GET", "documents", "รายการชุดความรู้", "Knowledge"),
+    ("POST", "documents", "สร้างชุดความรู้", "Knowledge"),
+    ("GET", "documents/{id}", "ดูรายละเอียดชุดความรู้", "Knowledge"),
+    ("PATCH", "documents/{id}", "แก้ไขชุดความรู้", "Knowledge"),
+    ("DELETE", "documents/{id}", "ลบชุดความรู้", "Knowledge"),
+    ("GET", "documents/{id}/shares", "รายการแชร์", "Knowledge"),
+    ("POST", "documents/{id}/shares", "แชร์ชุดความรู้", "Knowledge"),
+    ("DELETE", "documents/{id}/shares", "ยกเลิกแชร์", "Knowledge"),
+    ("GET", "documents/{id}/files/{index}/download", "ดาวน์โหลดไฟล์ต้นฉบับ", "Knowledge"),
+    # Conversations & Chat
+    ("POST", "conversations", "สร้างบทสนทนาใหม่", "แชท"),
+    ("GET", "conversations", "รายการบทสนทนา", "แชท"),
+    ("DELETE", "conversations", "ลบหลายบทสนทนา", "แชท"),
+    ("DELETE", "conversations/{id}", "ลบบทสนทนา", "แชท"),
+    ("GET", "conversations/{id}/messages", "ข้อความในบทสนทนา", "แชท"),
+    ("POST", "messages", "ส่งข้อความ (แชท)", "แชท"),
+    ("POST", "messages/{id}/feedback", "ส่ง feedback ข้อความ", "แชท"),
+    ("POST", "chat", "แชทกับบอท (ส่งคำถามได้คำตอบ)", "แชท"),
+    # Uploads
+    ("POST", "upload-batches", "สร้าง batch อัปโหลด", "อัปโหลด"),
+    ("GET", "upload-batches/{id}", "สถานะ batch", "อัปโหลด"),
+    ("POST", "upload-batches/{id}/files", "เพิ่มไฟล์ใน batch", "อัปโหลด"),
+    ("PUT", "uploads/{id}/parts/{partNumber}", "อัปโหลดส่วนของไฟล์", "อัปโหลด"),
+    ("POST", "uploads/{id}/complete", "ยืนยันอัปโหลดไฟล์เสร็จ", "อัปโหลด"),
+    ("POST", "upload-batches/{id}/complete", "ยืนยัน batch เสร็จ", "อัปโหลด"),
+    # Subscription & Stats
+    ("GET", "subscription/subscription", "โควต้าและการใช้งาน", "Subscription"),
+    ("GET", "stats/stats", "สถิติการใช้งาน", "Stats"),
+    # Integrations
+    ("GET", "integrations/integrations", "รายการ integration", "Integrations"),
+    ("PATCH", "integrations/integrations/{provider}", "ตั้งค่า integration (LINE ฯลฯ)", "Integrations"),
+    # Admin, Support — ไม่ใส่ใน Swagger ตอนนี้ (เรียก /api/admin/*, /api/support/* ได้ตามปกติ แค่ไม่โชว์ใน docs)
+    # Misc
+    ("GET", "ping", "ping (Legacy)", "ระบบ"),
+    ("GET", "avatars/{filename}", "รูปโปรไฟล์", "Auth"),
+]
+
+def _add_legacy_route(method: str, path_suffix: str, summary: str, tag: str) -> None:
+    path = f"/api/{path_suffix}" if path_suffix else "/api"
+    app.add_api_route(
+        path,
+        _proxy_forward,
+        methods=[method],
+        summary=summary,
+        tags=[tag],
+        include_in_schema=True,
+    )
+
+for _method, _path, _summary, _tag in _LEGACY_ROUTES:
+    _add_legacy_route(_method, _path, _summary, _tag)
+
+
+@app.api_route(
+    "/api/{path:path}",
+    methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    include_in_schema=False,
+)
+async def proxy_to_legacy(path: str, request: Request) -> Response:
+    """ส่งต่อ path อื่นที่ไม่ได้ลงทะเบียนไว้ด้านบน"""
+    return await _proxy_forward(request)
 
