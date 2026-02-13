@@ -1,0 +1,46 @@
+import { BrowserRouter as Router, Routes, Route, Navigate } from 'react-router-dom';
+import Auth from './pages/auth';
+import ForgotPassword from './pages/forgotpassword';
+import Homepage from './pages/homepage';
+import Verifying from './pages/verifying';
+import CreatePassword from './pages/CreatePassword';
+import ResetPassword from './pages/ResetPassword';
+import Approval from './pages/Approval';
+import Bots from './pages/Bots';
+import CreateBot from './pages/CreateBot';
+import Knowledge from './pages/Knowledge';
+import CreateKnowledge from './pages/CreateKnowledge';
+import AddKnowledgeData from './pages/AddKnowledgeData';
+import Integration from './pages/Integration';
+import Chat from './pages/Chat';
+import TestWidget from './pages/TestWidget';
+import ToastContainer from './components/ToastNotification';
+
+function App() {
+  return (
+    <Router>
+      <ToastContainer />
+      <Routes>
+        {/* Auth page is the main/default page */}
+        <Route path="/auth" element={<Auth />} />
+        <Route path="/" element={<Navigate to="/auth" replace />} />
+        <Route path="/forgotpassword" element={<ForgotPassword />} />
+        <Route path="/reset-password" element={<ResetPassword />} />
+        <Route path="/homepage" element={<Homepage />} />
+        <Route path="/verifying" element={<Verifying />} />
+        <Route path="/create-password" element={<CreatePassword />} />
+        <Route path="/approval" element={<Approval />} />
+        <Route path="/bots" element={<Bots />} />
+        <Route path="/create-bot" element={<CreateBot />} />
+        <Route path="/knowledge" element={<Knowledge />} />
+        <Route path="/create-knowledge" element={<CreateKnowledge />} />
+        <Route path="/knowledge/:id/add-data" element={<AddKnowledgeData />} />
+        <Route path="/integration" element={<Integration />} />
+        <Route path="/chat/:chatId" element={<Chat />} />
+        <Route path="/test-widget" element={<TestWidget />} />
+      </Routes>
+    </Router>
+  );
+}
+
+export default App;

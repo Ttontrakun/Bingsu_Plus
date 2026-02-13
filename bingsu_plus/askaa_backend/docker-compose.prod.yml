@@ -1,0 +1,126 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: ask_the_manual
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d ask_the_manual"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  qdrant:
+    image: qdrant/qdrant:latest
+    restart: unless-stopped
+    volumes:
+      - qdrant_data:/qdrant/storage
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    volumes:
+      - redis_data:/data
+
+  # Node/Express legacy API (used via FastAPI proxy)
+  legacy:
+    build:
+      context: .
+      dockerfile: Dockerfile.legacy
+    restart: unless-stopped
+    env_file:
+      - .env
+      # Optional: allow local overrides without committing secrets
+      - .env.local
+    volumes:
+      - uploads_data:/app/uploads
+    environment:
+      # Override hostnames for in-docker networking
+      - PORT=5052
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/ask_the_manual?schema=public
+      - REDIS_URL=redis://redis:6379
+      - QDRANT_URL=http://qdrant:6333
+      - UPLOAD_QUEUE_MODE=redis
+      - OCR_API_URL=http://api:8000
+      - OCR_ENABLED=true
+      # Frontend is served by `web` on port 80. Override via .env/.env.local if needed.
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost,http://127.0.0.1}
+      # Privacy: keep only extracted text + embeddings (no original file storage)
+      - STORE_RAW_FILES=false
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      redis:
+        condition: service_started
+    command: sh -lc "npx prisma migrate deploy && node server/index.js"
+
+  # Upload worker (required when UPLOAD_QUEUE_MODE=redis)
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile.legacy
+    restart: unless-stopped
+    env_file:
+      - .env
+      # Optional: allow local overrides without committing secrets
+      - .env.local
+    volumes:
+      - uploads_data:/app/uploads
+    environment:
+      - WORKER_MODE=upload
+      - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/ask_the_manual?schema=public
+      - REDIS_URL=redis://redis:6379
+      - QDRANT_URL=http://qdrant:6333
+      - UPLOAD_QUEUE_MODE=redis
+      - OCR_API_URL=http://api:8000
+      - OCR_ENABLED=true
+      # Privacy: keep only extracted text + embeddings (no original file storage)
+      - STORE_RAW_FILES=false
+    depends_on:
+      postgres:
+        condition: service_healthy
+      qdrant:
+        condition: service_started
+      redis:
+        condition: service_started
+    command: sh -lc "npx prisma migrate deploy && node server/worker.js"
+
+  # FastAPI main API (OCR + proxy to legacy)
+  api:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    restart: unless-stopped
+    env_file:
+      - .env
+      # Optional: allow local overrides without committing secrets
+      - .env.local
+    environment:
+      - PORT=8000
+      - LEGACY_API_URL=http://legacy:5052
+    depends_on:
+      - legacy
+
+  # Single entrypoint: serve CRA build + proxy /api -> FastAPI
+  web:
+    build:
+      context: ..
+      dockerfile: askaa_backend/Dockerfile.web
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+
+volumes:
+  postgres_data:
+  qdrant_data:
+  redis_data:
+  uploads_data:
+
