@@ -66,26 +66,8 @@ export const s3PublicUrl = process.env.S3_PUBLIC_URL || "";
 export const s3ForcePathStyle = (process.env.S3_FORCE_PATH_STYLE || "true") === "true";
 
 export const isProduction = process.env.NODE_ENV === "production";
-const envCorsOrigins = (process.env.CORS_ORIGINS || "")
-  .split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
-const devCorsOrigins = isProduction ? [] : ["http://localhost:3000", "http://127.0.0.1:3000"];
-const corsOrigins = Array.from(new Set([...envCorsOrigins, ...devCorsOrigins]));
-export const corsOptions = !isProduction
-  ? { origin: true, credentials: true }
-  : corsOrigins.length
-    ? {
-        origin: (origin, callback) => {
-          if (!origin || corsOrigins.includes(origin)) {
-            callback(null, true);
-          } else {
-            callback(new Error("Not allowed by CORS"));
-          }
-        },
-        credentials: true,
-      }
-    : { origin: true, credentials: true };
+// Legacy รับ request ผ่าน proxy (FastAPI/nginx) เท่านั้น — อนุญาตทุก origin เพื่อไม่ให้ CORS กีดกัน
+export const corsOptions = { origin: true, credentials: true };
 
 export const MAX_UPLOAD_PART_MB = Number(process.env.MAX_UPLOAD_PART_MB || 20);
 export const MAX_UPLOAD_PART_BYTES = Number.isFinite(MAX_UPLOAD_PART_MB)
@@ -138,8 +120,8 @@ export const RATE_LIMIT_WINDOW_MS = Number(process.env.RATE_LIMIT_WINDOW_MS || 6
 export const RATE_LIMIT_MAX = Number(process.env.RATE_LIMIT_MAX || 120);
 export const MAX_DAILY_UPLOAD_BYTES = Number(process.env.MAX_DAILY_UPLOAD_BYTES || 2_000_000_000);
 export const MAX_DAILY_CHAT_MESSAGES = Number(process.env.MAX_DAILY_CHAT_MESSAGES || 2000);
-/** จำนวนข้อความย้อนหลังที่ส่งให้โมเดล (user+model คู่) เพื่อให้จดจำบริบทบทสนทนา */
-export const MAX_CHAT_HISTORY_MESSAGES = Math.max(0, Math.floor(parseNumberEnv(process.env.MAX_CHAT_HISTORY_MESSAGES, 20)));
+/** จำนวนข้อความย้อนหลังที่ส่งให้โมเดล (user+model คู่) เพื่อให้จดจำบริบทบทสนทนา — ค่าเยอะ = จดจำคำถามก่อนหน้าได้นานขึ้น */
+export const MAX_CHAT_HISTORY_MESSAGES = Math.max(0, Math.floor(parseNumberEnv(process.env.MAX_CHAT_HISTORY_MESSAGES, 40)));
 export const FREE_DAILY_TOKEN_LIMIT = Math.max(0, Math.floor(parseNumberEnv(process.env.FREE_DAILY_TOKEN_LIMIT, 50_000)));
 export const FREE_KNOWLEDGE_LIMIT = Math.max(0, Math.floor(parseNumberEnv(process.env.FREE_KNOWLEDGE_LIMIT, 30)));
 

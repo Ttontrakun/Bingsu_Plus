@@ -5,6 +5,8 @@ import { useState, useRef, useEffect } from 'react';
 import { documentsAPI, getErrorMessage } from '../services/api';
 import { listCache } from '../utils/listCache';
 
+const HELP_KNOWLEDGE_NAME = 'คู่มือการใช้งาน';
+
 const mapDocsToList = (docs) =>
   (docs || []).map((d) => ({
     id: d.id,
@@ -12,6 +14,8 @@ const mapDocsToList = (docs) =>
     description: d.sourceFiles?.length ? `${d.sourceFiles.length} file(s)` : 'No files',
     groups: [],
   }));
+
+const isHelpKnowledge = (name) => (name || '').trim() === HELP_KNOWLEDGE_NAME;
 
 function Knowledge() {
   const navigate = useNavigate();
@@ -190,14 +194,19 @@ function Knowledge() {
         <div className='flex-1'>
           {knowledgeList.length > 0 ? (
             <div className='grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4'>
-              {knowledgeList.map((knowledge) => (
+              {knowledgeList.map((knowledge) => {
+                const help = isHelpKnowledge(knowledge.name);
+                return (
                 <div
                   key={knowledge.id}
-                  onClick={() => navigate(`/knowledge/${knowledge.id}/add-data`)}
-                  className='bg-white border border-gray-200 rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow cursor-pointer hover:border-yellow-400 relative'
+                  role={help ? 'article' : 'button'}
+                  tabIndex={help ? undefined : 0}
+                  onClick={help ? undefined : () => navigate(`/knowledge/${knowledge.id}/add-data`)}
+                  onKeyDown={help ? undefined : (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); navigate(`/knowledge/${knowledge.id}/add-data`); } }}
+                  className={`bg-white border border-gray-200 rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow relative ${help ? 'pointer-events-none cursor-default' : 'cursor-pointer hover:border-yellow-400'}`}
                 >
                   {/* Menu Button — ไม่แสดงสำหรับคู่มือการใช้งาน (แก้ไข/ลบไม่ได้) */}
-                  {knowledge.name !== 'คู่มือการใช้งาน' && (
+                  {!help && (
                     <div 
                       className='absolute top-4 right-4'
                       ref={(el) => menuRefs.current[knowledge.id] = el}
@@ -238,16 +247,18 @@ function Knowledge() {
 
                   <h3 className='text-lg font-semibold text-gray-800 mb-2 pr-8'>{knowledge.name}</h3>
                   <p className='text-sm text-gray-600 mb-4'>{knowledge.description}</p>
-                  <button
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      navigate(`/knowledge/${knowledge.id}/add-data`);
-                    }}
-                    className='inline-flex items-center gap-2 px-2 py-1 bg-yellow-400 hover:bg-yellow-500 text-gray-800 font-medium rounded-md shadow hover:shadow-md transition-all duration-200 hover:scale-105 active:scale-95 text-sm'
-                  >
-                    <span>Add Data</span>
-                    <span>→</span>
-                  </button>
+                  {!help && (
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        navigate(`/knowledge/${knowledge.id}/add-data`);
+                      }}
+                      className='inline-flex items-center gap-2 px-2 py-1 bg-yellow-400 hover:bg-yellow-500 text-gray-800 font-medium rounded-md shadow hover:shadow-md transition-all duration-200 hover:scale-105 active:scale-95 text-sm'
+                    >
+                      <span>Add Data</span>
+                      <span>→</span>
+                    </button>
+                  )}
 
                   {/* Groups Display */}
                   {knowledge.groups.length > 0 && (
@@ -263,7 +274,8 @@ function Knowledge() {
                     </div>
                   )}
                 </div>
-              ))}
+              );
+              })}
             </div>
           ) : (
             <div className='text-center py-16'>

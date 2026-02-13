@@ -119,7 +119,7 @@ cd Bingsu_Plus
 รันเฉพาะ Postgres, Redis และ Qdrant (ยังไม่รันแอป):
 
 ```bash
-cd askaa_backend
+cd bingsu_plus/askaa_backend
 docker compose up -d
 ```
 
@@ -139,7 +139,7 @@ docker ps
 
 ### ขั้นที่ 3 — Backend: ไฟล์กำหนดค่า (.env.local)
 
-สร้างไฟล์ `.env.local` จากตัวอย่าง (ในโฟลเดอร์ `askaa_backend`):
+สร้างไฟล์ `.env.local` จากตัวอย่าง (ในโฟลเดอร์ `bingsu_plus/askaa_backend`):
 
 **Windows (PowerShell หรือ CMD):**
 
@@ -173,7 +173,7 @@ cp env.sample .env.local
 
 ### ขั้นที่ 4 — Backend: ติดตั้ง Dependencies และ Database
 
-ยังอยู่ที่โฟลเดอร์ `askaa_backend`:
+ยังอยู่ที่โฟลเดอร์ `bingsu_plus/askaa_backend`:
 
 ```bash
 npm install
@@ -192,7 +192,7 @@ npm run seed:help-bot
 
 ### ขั้นที่ 5 — Frontend: ไฟล์กำหนดค่า
 
-กลับไปที่รากโปรเจกต์ แล้วเข้าโฟลเดอร์ Frontend:
+เข้าโฟลเดอร์ Frontend (จาก `bingsu_plus/askaa_backend` ใช้ `cd ../Frontend`):
 
 ```bash
 cd ../Frontend
@@ -242,7 +242,7 @@ npm install
 ถ้ารัน `docker compose up -d` ไว้แล้ว ไม่ต้องทำซ้ำ แค่ตรวจสอบว่า container ยังขึ้นอยู่:
 
 ```bash
-cd askaa_backend
+cd bingsu_plus/askaa_backend
 docker compose up -d
 ```
 
@@ -251,21 +251,21 @@ docker compose up -d
 **2a) Node Legacy API (port 5052):**
 
 ```bash
-cd askaa_backend
+cd bingsu_plus/askaa_backend
 npm run dev:legacy
 ```
 
 **2b) FastAPI (port 5051)** — เปิด Terminal อีกหนึ่งอัน:
 
 ```bash
-cd askaa_backend
+cd bingsu_plus/askaa_backend
 npm run dev:fastapi
 ```
 
 ### Terminal 3 — Frontend (React)
 
 ```bash
-cd Frontend
+cd bingsu_plus/Frontend
 npm start
 ```
 
@@ -321,12 +321,12 @@ npm start
 
 ## การ Deploy แบบ Production (Docker)
 
-เมื่อต้องการ deploy จริง (รันจากโฟลเดอร์ `askaa_backend`):
+เมื่อต้องการ deploy จริง (รันจากโฟลเดอร์ `bingsu_plus/askaa_backend`):
 
-1. **เตรียม `.env` ในโฟลเดอร์ `askaa_backend`** (ไม่ใช้ `.env.local`):
+1. **เตรียม `.env` ในโฟลเดอร์ `bingsu_plus/askaa_backend`** (ไม่ใช้ `.env.local`):
 
    ```bash
-   cd askaa_backend
+   cd bingsu_plus/askaa_backend
    copy env.sample .env
    ```
 
@@ -337,11 +337,9 @@ npm start
 3. **รันทั้ง stack:**
 
    ```bash
-   cd askaa_backend
+   cd bingsu_plus/askaa_backend
    docker compose -f docker-compose.prod.yml up -d --build
    ```
-
-   (ใช้ `docker-compose.prod.yml` เมื่ออยู่ที่ `askaa_backend`; ถ้าอยู่ที่ `bingsu_plus` ใช้ `docker compose up -d --build` ตามหัวข้อด้านบน)
 
 4. **เข้าใช้งาน:** เปิดเบราว์เซอร์ที่ `http://<IP ของเครื่อง>` (หรือโดเมนที่ชี้มาที่ IP นี้)
 
@@ -350,31 +348,36 @@ npm start
 - เสิร์ฟหน้าเว็บ (React build)
 - ส่ง request ที่ขึ้นต้นด้วย `/api/` ไปที่ FastAPI
 
-รายละเอียดเพิ่มเติมดูที่ [askaa_backend/README.md](askaa_backend/README.md) ส่วน Production deploy
+รายละเอียดเพิ่มเติมดูที่ [bingsu_plus/askaa_backend/README.md](bingsu_plus/askaa_backend/README.md) ส่วน Production deploy
 
 ---
 
 ## โครงสร้างโปรเจกต์
 
+ใช้ชุด **Docker** เดียว — Frontend และ Backend อยู่ในโฟลเดอร์ `bingsu_plus/`:
+
 ```
-Bingsu_Plus/
+ask_AA/
 ├── README.md                 ← คู่มือนี้
-├── .env.example              ← ตัวอย่าง env สำหรับ Frontend
-├── askaa_backend/            ← Backend (Node + FastAPI)
-│   ├── README.md             ← รายละเอียด Backend, OCR, Embedding, Production
-│   ├── env.sample            ← ตัวอย่าง .env.local สำหรับ Backend
-│   ├── docker-compose.yml    ← Infra เท่านั้น (Postgres, Redis, Qdrant)
-│   ├── docker-compose.prod.yml  ← ทั้ง stack สำหรับ Production
-│   ├── server/               ← Node/Express (Auth, Documents, Bots, Chat, Upload)
-│   ├── backend/              ← FastAPI (proxy + OCR)
-│   ├── prisma/               ← Schema และ migrations
-│   └── nginx/                ← คอนฟิก Nginx สำหรับ Production
-└── Frontend/                 ← React (Create React App + Tailwind)
-    ├── src/
-    │   ├── config/api.js     ← baseURL สำหรับเรียก API
-    │   └── setupProxy.js     ← proxy /api → localhost:5051 ตอนพัฒนา
-    └── public/
+├── bingsu_plus/              ← โฟลเดอร์หลักสำหรับรันและ deploy (Docker)
+│   ├── docker-compose.yml    ← รันทั้ง stack (Frontend + Backend + DB)
+│   ├── .env.example          ← ตัวอย่าง env สำหรับ Frontend
+│   ├── askaa_backend/        ← Backend (Node + FastAPI)
+│   │   ├── README.md         ← รายละเอียด Backend, OCR, Embedding, Production
+│   │   ├── env.sample        ← ตัวอย่าง .env สำหรับ Backend
+│   │   ├── docker-compose.prod.yml  ← Production (Nginx + build)
+│   │   ├── server/           ← Node/Express (Auth, Documents, Bots, Chat, Upload)
+│   │   ├── backend/          ← FastAPI (proxy + OCR)
+│   │   ├── prisma/           ← Schema และ migrations
+│   │   └── nginx/            ← คอนฟิก Nginx สำหรับ Production
+│   └── Frontend/             ← React (Create React App + Tailwind)
+│       ├── src/
+│       │   ├── config/api.js ← baseURL สำหรับเรียก API
+│       │   └── setupProxy.js ← proxy /api → localhost:5051 ตอนพัฒนา
+│       └── public/
 ```
+
+รัน: `cd bingsu_plus` แล้ว `docker compose up -d --build` หรือ deploy ตามหัวข้อด้านบน
 
 ---
 
@@ -386,11 +389,11 @@ Bingsu_Plus/
 | **Login แล้วขึ้น Network error / Not Found** | ตรวจว่า Backend รันครบ (legacy + FastAPI) และ Frontend ชี้ไปที่ URL ที่ถูก (หรือใช้ proxy) |
 | **อัปโหลดเอกสารแล้วไม่ประมวลผล** | โหมด production ต้องมี `worker` รัน (รวมอยู่ใน `docker-compose.prod.yml`) และ `UPLOAD_QUEUE_MODE=redis` |
 | **Embedding / แชท error เรื่อง API key** | ตรวจ `OPENAI_API_KEY`, `EMBEDDING_API_KEY` หรือ `GEMINI_API_KEY` ใน `.env.local` / `.env` ว่าถูกต้องและตรงกับ provider ที่เลือก |
-| **เปลี่ยน Embedding model แล้ว error** | ใช้ Qdrant collection ใหม่ (ตั้ง `QDRANT_COLLECTION` ใน env) แล้วรัน `npm run reindex:documents` ใน `askaa_backend` |
+| **เปลี่ยน Embedding model แล้ว error** | ใช้ Qdrant collection ใหม่ (ตั้ง `QDRANT_COLLECTION` ใน env) แล้วรัน `npm run reindex:documents` ใน `bingsu_plus/askaa_backend` |
 
 ---
 
 ## ลิงก์เพิ่มเติม
 
-- **Backend (รายละเอียด OCR, Embedding, Privacy, Production):** [askaa_backend/README.md](askaa_backend/README.md)
-- **Frontend (React, Tailwind):** [Frontend/README.md](Frontend/README.md)
+- **Backend (รายละเอียด OCR, Embedding, Privacy, Production):** [bingsu_plus/askaa_backend/README.md](bingsu_plus/askaa_backend/README.md)
+- **Frontend (React, Tailwind):** [bingsu_plus/Frontend/README.md](bingsu_plus/Frontend/README.md)

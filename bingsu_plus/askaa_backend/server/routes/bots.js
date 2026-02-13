@@ -16,6 +16,7 @@ const formatBot = (bot) => ({
   description: bot.description,
   model: bot.model,
   avatarUrl: bot.avatarUrl,
+  enabled: bot.enabled !== false,
   createdAt: bot.createdAt,
   updatedAt: bot.updatedAt,
   documents: (bot.documents || []).map((link) => link.document),
@@ -84,6 +85,7 @@ botsRouter.post("/", authenticate, async (req, res) => {
       model: model ?? null,
       avatarUrl: avatarUrl ?? null,
       ownerId: req.user.id,
+      enabled: true,
       documents: validIds.length
         ? {
             create: validIds.map((id) => ({ documentId: id })),
@@ -112,6 +114,7 @@ botsRouter.post("/", authenticate, async (req, res) => {
     description: bot.description,
     model: bot.model,
     avatarUrl: bot.avatarUrl,
+    enabled: true,
     createdAt: bot.createdAt,
     updatedAt: bot.updatedAt,
     documents: bot.documents.map((link) => link.document),
@@ -120,100 +123,116 @@ botsRouter.post("/", authenticate, async (req, res) => {
 });
 
 botsRouter.patch("/:id", authenticate, async (req, res) => {
-  const { name, prompt, description, model, avatarUrl, documentIds } = req.body ?? {};
+  try {
+    const { name, prompt, description, model, avatarUrl, documentIds, enabled } = req.body ?? {};
 
-  if (!name && !prompt && !documentIds && description === undefined && model === undefined && avatarUrl === undefined) {
-    res.status(400).json({ error: "name, prompt, description, model, avatarUrl or documentIds is required" });
-    return;
-  }
-
-  const bot = await prisma.bot.findFirst({
-    where: { id: req.params.id, ownerId: req.user.id },
-  });
-
-  if (!bot) {
-    res.status(404).json({ error: "Bot not found" });
-    return;
-  }
-
-  if (bot.name === HELP_BOT_NAME) {
-    res.status(403).json({ error: "ไม่สามารถแก้ไขบอทช่วยสอนได้" });
-    return;
-  }
-
-  const rawIds = Array.isArray(documentIds) ? documentIds : null;
-  const ids = rawIds ? [...new Set(rawIds.filter(Boolean))] : null;
-  let validIds = ids;
-  if (ids && ids.length > 0) {
-    const accessibleDocs = await prisma.document.findMany({
-      where: {
-        id: { in: ids },
-        OR: [
-          { ownerId: req.user.id },
-          { shares: { some: { userId: req.user.id } } },
-        ],
-      },
-      select: { id: true },
-    });
-    const accessibleIdSet = new Set(accessibleDocs.map((doc) => doc.id));
-    validIds = ids.filter((id) => accessibleIdSet.has(id));
-  }
-
-  const updated = await prisma.$transaction(async (tx) => {
-    const updatedBot = await tx.bot.update({
-      where: { id: bot.id },
-      data: {
-        name: name ?? undefined,
-        prompt: prompt ?? undefined,
-        description: description ?? undefined,
-        model: model ?? undefined,
-        avatarUrl: avatarUrl ?? undefined,
-      },
-    });
-
-    if (ids) {
-      await tx.botDocument.deleteMany({ where: { botId: bot.id } });
-      if (validIds && validIds.length > 0) {
-        await tx.botDocument.createMany({
-          data: validIds.map((id) => ({ botId: bot.id, documentId: id })),
-        });
-      }
+    const hasAny =
+      name !== undefined || prompt !== undefined || documentIds !== undefined ||
+      description !== undefined || model !== undefined || avatarUrl !== undefined || enabled !== undefined;
+    if (!hasAny) {
+      res.status(400).json({ error: "at least one of name, prompt, description, model, avatarUrl, documentIds, enabled is required" });
+      return;
     }
 
-    return updatedBot;
-  });
+    const bot = await prisma.bot.findFirst({
+      where: { id: req.params.id, ownerId: req.user.id },
+    });
 
-  const withDocs = await prisma.bot.findUnique({
-    where: { id: updated.id },
-    include: { documents: { include: { document: { select: { id: true, displayName: true } } } } },
-  });
+    if (!bot) {
+      res.status(404).json({ error: "Bot not found" });
+      return;
+    }
 
-  await logEvent({
-    event: "bot.updated",
-    actorId: req.user.id,
-    targetType: "bot",
-    targetId: withDocs.id,
-    meta: {
+    if (bot.name === HELP_BOT_NAME) {
+      res.status(403).json({ error: "ไม่สามารถแก้ไขบอทช่วยสอนได้" });
+      return;
+    }
+
+    const rawIds = Array.isArray(documentIds) ? documentIds : null;
+    const ids = rawIds ? [...new Set(rawIds.filter(Boolean))] : null;
+    let validIds = ids;
+    if (ids && ids.length > 0) {
+      const accessibleDocs = await prisma.document.findMany({
+        where: {
+          id: { in: ids },
+          OR: [
+            { ownerId: req.user.id },
+            { shares: { some: { userId: req.user.id } } },
+          ],
+        },
+        select: { id: true },
+      });
+      const accessibleIdSet = new Set(accessibleDocs.map((doc) => doc.id));
+      validIds = ids.filter((id) => accessibleIdSet.has(id));
+    }
+
+    const updateData = {};
+    if (name !== undefined) updateData.name = name;
+    if (prompt !== undefined) updateData.prompt = prompt;
+    if (description !== undefined) updateData.description = description;
+    if (model !== undefined) updateData.model = model;
+    if (avatarUrl !== undefined) updateData.avatarUrl = avatarUrl;
+    if (enabled !== undefined) updateData.enabled = Boolean(enabled);
+
+    const updated = await prisma.$transaction(async (tx) => {
+      const updatedBot = Object.keys(updateData).length > 0
+        ? await tx.bot.update({
+            where: { id: bot.id },
+            data: updateData,
+          })
+        : bot;
+
+      if (ids) {
+        await tx.botDocument.deleteMany({ where: { botId: bot.id } });
+        if (validIds && validIds.length > 0) {
+          await tx.botDocument.createMany({
+            data: validIds.map((id) => ({ botId: bot.id, documentId: id })),
+          });
+        }
+      }
+
+      return updatedBot;
+    });
+
+    const withDocs = await prisma.bot.findUnique({
+      where: { id: updated.id },
+      include: { documents: { include: { document: { select: { id: true, displayName: true } } } } },
+    });
+
+    await logEvent({
+      event: "bot.updated",
+      actorId: req.user.id,
+      targetType: "bot",
+      targetId: withDocs.id,
+      meta: {
+        name: withDocs.name,
+        nameChanged: Boolean(name),
+        promptChanged: Boolean(prompt),
+        documentCount: withDocs.documents.length,
+        ...getRequestContext(req),
+      },
+    });
+
+    res.json({
+      id: withDocs.id,
       name: withDocs.name,
-      nameChanged: Boolean(name),
-      promptChanged: Boolean(prompt),
-      documentCount: withDocs.documents.length,
-      ...getRequestContext(req),
-    },
-  });
-
-  res.json({
-    id: withDocs.id,
-    name: withDocs.name,
-    prompt: withDocs.prompt,
-    description: withDocs.description,
-    model: withDocs.model,
-    avatarUrl: withDocs.avatarUrl,
-    createdAt: withDocs.createdAt,
-    updatedAt: withDocs.updatedAt,
-    documents: withDocs.documents.map((link) => link.document),
-  });
-  await invalidateUserCaches(req.user.id);
+      prompt: withDocs.prompt,
+      description: withDocs.description,
+      model: withDocs.model,
+      avatarUrl: withDocs.avatarUrl,
+      enabled: withDocs.enabled !== false,
+      createdAt: withDocs.createdAt,
+      updatedAt: withDocs.updatedAt,
+      documents: withDocs.documents.map((link) => link.document),
+    });
+    await invalidateUserCaches(req.user.id);
+  } catch (err) {
+    console.error("PATCH /api/bots/:id error:", err);
+    res.status(500).json({
+      error: "เซิร์ฟเวอร์ตอบ 500 — backend อาจยังไม่พร้อม ลองรีเฟรชหรือตรวจสอบ Docker (api/legacy)",
+      detail: err?.message || String(err),
+    });
+  }
 });
 
 botsRouter.delete("/:id", authenticate, async (req, res) => {

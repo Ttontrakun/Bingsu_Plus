@@ -1,9 +1,12 @@
 import { useNavigate } from 'react-router-dom';
 import { HiPlus, HiSearch, HiDotsHorizontal } from 'react-icons/hi';
 import Sidebar from '../components/Sidebar';
+import Toggle from '../components/Toggle';
 import { useState, useMemo, useRef, useEffect } from 'react';
 import { botsAPI, getErrorMessage } from '../services/api';
 import { listCache } from '../utils/listCache';
+
+const HELP_BOT_NAME = 'บอทช่วยสอน';
 
 function Bots() {
   const navigate = useNavigate();
@@ -82,6 +85,21 @@ function Bots() {
     }
   };
 
+  const handleToggleEnabled = async (botId, enabled) => {
+    setError('');
+    try {
+      await botsAPI.update(botId, { enabled });
+      setBotList((prev) => {
+        const next = prev.map((b) => (b.id === botId ? { ...b, enabled } : b));
+        listCache.setBots(next);
+        return next;
+      });
+    } catch (err) {
+      console.error('Failed to update bot enabled', err);
+      setError(getErrorMessage(err));
+    }
+  };
+
   // Close menu when clicking outside
   useEffect(() => {
     const handleClickOutside = (event) => {
@@ -154,7 +172,7 @@ function Bots() {
               {filteredBots.map(bot => (
                   <div key={bot.id} className='bg-white border border-gray-200 rounded-lg p-6 shadow-sm hover:shadow-md transition-shadow hover:border-yellow-400 flex flex-col justify-between relative'>
                     {/* Menu Button — ไม่แสดงสำหรับบอทช่วยสอน (แก้ไข/ลบไม่ได้) */}
-                    {bot.name !== 'บอทช่วยสอน' && (
+                    {bot.name !== HELP_BOT_NAME && (
                       <div 
                         className='absolute top-4 right-4'
                         ref={(el) => menuRefs.current[bot.id] = el}
@@ -189,21 +207,32 @@ function Bots() {
                       </div>
                     )}
 
-                    <div>
+                    <div className='flex-1'>
                       <div className='flex items-center gap-3 mb-3'>
                         <div className={`w-12 h-12 rounded-full bg-gradient-to-br ${getBotProfileColor(bot.id)} flex items-center justify-center text-white font-bold text-lg flex-shrink-0 transition-all ${
-                          bot.status === 'Inactive' ? 'grayscale opacity-50' : ''
+                          bot.enabled === false ? 'grayscale opacity-50' : ''
                         }`}>
                           {bot.name.charAt(0).toUpperCase()}
                         </div>
                         <h3 className='text-lg font-semibold text-gray-800'>{bot.name}</h3>
                       </div>
-                      <p className='text-sm text-gray-600 mb-4'>{bot.description}</p>
-                  <div className='flex items-center justify-between'>
-                    <span className="inline-block px-3 py-1 text-xs rounded-full font-semibold bg-green-100 text-green-700">
-                      Active
-                    </span>
-                  </div>
+                      <p className='text-sm text-gray-600 mb-6 flex-1'>{bot.description}</p>
+                    </div>
+
+                    <div className='flex items-center justify-between mt-auto gap-2'>
+                      <span className={`inline-block px-3 py-1 text-xs rounded-full font-semibold shrink-0 ${bot.name === HELP_BOT_NAME ? 'bg-green-100 text-green-700' : (bot.enabled !== false ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500')}`}>
+                        {bot.name === HELP_BOT_NAME ? 'Active' : (bot.enabled !== false ? 'Active' : 'Inactive')}
+                      </span>
+                      {bot.name === HELP_BOT_NAME ? (
+                        <span className="inline-block px-3 py-1 text-xs rounded-full font-semibold bg-gray-100 text-gray-600 shrink-0">
+                          บอทระบบ
+                        </span>
+                      ) : (
+                        <Toggle
+                          enabled={bot.enabled !== false}
+                          onChange={(enabled) => handleToggleEnabled(bot.id, enabled)}
+                        />
+                      )}
                     </div>
                   </div>
                 ))}

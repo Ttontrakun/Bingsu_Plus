@@ -112,6 +112,7 @@ model Bot {
   model     String?
   avatarUrl String?
   ownerId   String
+  enabled   Boolean  @default(true)
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 

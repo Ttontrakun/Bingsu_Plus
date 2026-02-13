@@ -42,7 +42,8 @@ function Homepage() {
     () => !(listCache.getBots()?.length && listCache.getDocuments()?.length)
   );
 
-  const botOptions = bots.map((b) => ({ value: b.id, label: b.name }));
+  const enabledBots = bots.filter((b) => b.enabled !== false);
+  const botOptions = enabledBots.map((b) => ({ value: b.id, label: b.name }));
   const selectedBotDetails = bots.find((b) => b.id === selectedBot) || null;
   const homepageDescription = selectedBotDetails?.description?.trim() || DEFAULT_DESCRIPTION;
   const helpKnowledgeId = knowledgeOptions.find((o) => o.label === HELP_KNOWLEDGE_LABEL)?.value ?? null;
@@ -96,6 +97,14 @@ function Homepage() {
     else localStorage.removeItem(STORAGE_BOT);
   }, []);
 
+  // ถ้าบอทที่เลือกอยู่ถูกปิดไป ให้ล้างการเลือก
+  useEffect(() => {
+    if (selectedBot && enabledBots.length > 0 && !enabledBots.some((b) => b.id === selectedBot)) {
+      setSelectedBot(null);
+      persistBot(null);
+    }
+  }, [selectedBot, enabledBots, persistBot]);
+
   useEffect(() => {
     const cachedDocs = listCache.getDocuments();
     const cachedBots = listCache.getBots();
@@ -110,7 +119,7 @@ function Homepage() {
       const savedKnowledge = localStorage.getItem(STORAGE_KNOWLEDGE);
       const savedBot = localStorage.getItem(STORAGE_BOT);
       if (savedKnowledge && cachedDocs.some((d) => d.id === savedKnowledge)) setSelectedKnowledge(savedKnowledge);
-      if (savedBot && cachedBots.some((b) => b.id === savedBot)) setSelectedBot(savedBot);
+      if (savedBot && cachedBots.some((b) => b.id === savedBot && b.enabled !== false)) setSelectedBot(savedBot);
     }
 
     const bootstrap = async () => {
@@ -134,7 +143,7 @@ function Homepage() {
           if (savedKnowledge && docsList.some((d) => d.id === savedKnowledge)) {
             setSelectedKnowledge(savedKnowledge);
           }
-          if (savedBot && botsList.some((b) => b.id === savedBot)) {
+          if (savedBot && botsList.some((b) => b.id === savedBot && b.enabled !== false)) {
             setSelectedBot(savedBot);
           }
         }
