@@ -38,6 +38,7 @@ services:
       - .env.local
     volumes:
       - uploads_data:/app/uploads
+      - uploads_tmp:/app/.uploads
     environment:
       # Override hostnames for in-docker networking
       - PORT=5052
@@ -72,6 +73,7 @@ services:
       - .env.local
     volumes:
       - uploads_data:/app/uploads
+      - uploads_tmp:/app/.uploads
     environment:
       - WORKER_MODE=upload
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/ask_the_manual?schema=public
@@ -123,4 +125,5 @@ volumes:
   qdrant_data:
   redis_data:
   uploads_data:
+  uploads_tmp:
 
