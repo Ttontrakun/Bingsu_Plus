@@ -1,0 +1,30 @@
+FROM node:20-alpine
+
+WORKDIR /app
+
+# Install deps (includes Prisma CLI in devDependencies)
+COPY package.json package-lock.json ./
+ENV NPM_CONFIG_AUDIT=false \
+    NPM_CONFIG_FUND=false \
+    NPM_CONFIG_FETCH_RETRIES=5 \
+    NPM_CONFIG_FETCH_RETRY_FACTOR=2 \
+    NPM_CONFIG_FETCH_RETRY_MINTIMEOUT=20000 \
+    NPM_CONFIG_FETCH_RETRY_MAXTIMEOUT=120000
+RUN npm ci --no-audit --no-fund
+
+# For Docker healthcheck
+RUN apk add --no-cache curl
+
+# Prisma schema + migrations
+COPY prisma ./prisma
+RUN npx prisma generate
+
+# App source
+COPY server ./server
+
+ENV NODE_ENV=production
+
+EXPOSE 5052
+
+CMD ["node", "server/index.js"]
+
