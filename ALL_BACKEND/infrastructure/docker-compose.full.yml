@@ -1,8 +1,10 @@
+# Full Stack Docker Compose for ALL_BACKEND
+# Includes all services: Node/Express, FastAPI OCR, Infrastructure
+
 services:
-  # Infrastructure Services
+  # Infrastructure
   postgres:
     image: postgres:16-alpine
-    container_name: bingsu_postgres
     restart: unless-stopped
     environment:
       POSTGRES_USER: postgres
@@ -17,42 +19,33 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
-    networks:
-      - bingsu_network
-
-  redis:
-    image: redis:7-alpine
-    container_name: bingsu_redis
-    restart: unless-stopped
-    ports:
-      - "6380:6379"
-    volumes:
-      - redis_data:/data
-    networks:
-      - bingsu_network
 
   qdrant:
     image: qdrant/qdrant:latest
-    container_name: bingsu_qdrant
     restart: unless-stopped
     ports:
       - "6334:6333"
     volumes:
       - qdrant_data:/qdrant/storage
-    networks:
-      - bingsu_network
 
-  # ALL_BACKEND API (Node/Express)
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6380:6379"
+    volumes:
+      - redis_data:/data
+
+  # Node/Express API (Main Backend)
   api:
     build:
-      context: ./ALL_BACKEND
-      dockerfile: Dockerfile
-    container_name: bingsu_api
+      context: ..
+      dockerfile: ALL_BACKEND/Dockerfile
     restart: unless-stopped
     env_file:
-      - ./ALL_BACKEND/.env.local
+      - ../config/env/.env
     environment:
-      - PORT=5050
+      - PORT=5052
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/ask_the_manual?schema=public
       - REDIS_URL=redis://redis:6379
       - QDRANT_URL=http://qdrant:6333
@@ -62,45 +55,39 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_started
       qdrant:
         condition: service_started
+      redis:
+        condition: service_started
     ports:
-      - "5050:5050"
+      - "5052:5052"
     volumes:
-      - ./uploads:/app/uploads
-      - ./.uploads:/app/.uploads
-    networks:
-      - bingsu_network
+      - ../uploads:/app/uploads
+      - ../.uploads:/app/.uploads
 
   # OCR Service (FastAPI)
   ocr:
     build:
-      context: ./ALL_BACKEND
-      dockerfile: services/ocr/Dockerfile
-    container_name: bingsu_ocr
+      context: ..
+      dockerfile: ALL_BACKEND/services/ocr/Dockerfile
     restart: unless-stopped
     env_file:
-      - ./ALL_BACKEND/.env.local
+      - ../config/env/.env
     environment:
       - PORT=8000
     ports:
       - "8000:8000"
     depends_on:
       - api
-    networks:
-      - bingsu_network
 
   # Upload Worker
   worker:
     build:
-      context: ./ALL_BACKEND
-      dockerfile: Dockerfile
-    container_name: bingsu_worker
+      context: ..
+      dockerfile: ALL_BACKEND/Dockerfile
     restart: unless-stopped
     env_file:
-      - ./ALL_BACKEND/.env.local
+      - ../config/env/.env
     environment:
       - WORKER_MODE=upload
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/ask_the_manual?schema=public
@@ -111,43 +98,13 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_started
       qdrant:
         condition: service_started
+      redis:
+        condition: service_started
     command: ["node", "-e", "process.env.WORKER_MODE='upload'; require('./main.js')"]
-    networks:
-      - bingsu_network
-
-  # Frontend (React)
-  frontend:
-    build:
-      context: ./Frontend
-      dockerfile: Dockerfile
-    container_name: bingsu_frontend
-    environment:
-      REACT_APP_API_BASE_URL: http://localhost:5050
-      REACT_APP_API_TIMEOUT: 30000
-      REACT_APP_BACKEND_PORT: 5050
-    ports:
-      - "3000:3000"
-    depends_on:
-      - api
-    networks:
-      - bingsu_network
-    volumes:
-      - ./Frontend:/app
-      - /app/node_modules
-    restart: unless-stopped
 
 volumes:
   postgres_data:
-    driver: local
-  redis_data:
-    driver: local
   qdrant_data:
-    driver: local
-
-networks:
-  bingsu_network:
-    driver: bridge
+  redis_data:

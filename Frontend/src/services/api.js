@@ -1,6 +1,31 @@
 import axios from 'axios';
 import API_CONFIG from '../config/api';
 
+const AVATAR_VERSION_KEY = 'userAvatarVersion';
+
+export function getAvatarUrl(avatarUrl) {
+    if (!avatarUrl) return null;
+    if (avatarUrl.startsWith('http')) return avatarUrl;
+    let url;
+    if (avatarUrl.includes('/uploads/avatars/')) {
+        const filename = avatarUrl.replace(/^.*\/uploads\/avatars\//, '').split('?')[0];
+        if (filename) url = `/api/avatars/${filename}`;
+        else url = avatarUrl.startsWith('/') ? avatarUrl : '/' + avatarUrl;
+    } else {
+        url = avatarUrl.startsWith('/') ? avatarUrl : '/' + avatarUrl;
+    }
+    const version = typeof localStorage !== 'undefined' ? localStorage.getItem(AVATAR_VERSION_KEY) : null;
+    if (url && url.includes('/api/avatars/')) return `${url}?t=${version || 0}`;
+    return url;
+}
+
+export function setAvatarVersion() {
+    try {
+        localStorage.setItem(AVATAR_VERSION_KEY, String(Date.now()));
+        if (typeof window !== 'undefined') window.dispatchEvent(new CustomEvent('avatarUpdated'));
+    } catch (_) {}
+}
+
 const api = axios.create({
     baseURL: API_CONFIG.baseURL,
     timeout: API_CONFIG.timeout,
@@ -9,13 +34,32 @@ const api = axios.create({
     },
 });
 
+// ให้ทุก request ใช้ origin ของหน้าปัจจุบัน (เปิดจาก 192.168.1.8 ก็เรียก 192.168.1.8/api)
+api.interceptors.request.use((config) => {
+    config.baseURL = API_CONFIG.baseURL;
+    return config;
+});
+
+const SESSION_KEY = 'sessionToken';
+
+export const setSessionToken = (token) => {
+    if (token) {
+        localStorage.setItem(SESSION_KEY, token);
+    } else {
+        localStorage.removeItem(SESSION_KEY);
+    }
+};
+
+const getSessionToken = () => localStorage.getItem(SESSION_KEY);
+
 // Request interceptor - add auth token to requests
 api.interceptors.request.use(
     (config) => {
-        const token = localStorage.getItem('authToken');
+        const token = getSessionToken();
         if (token) {
             config.headers.Authorization = `Bearer ${token}`;
         }
+        config.headers['x-client-platform'] = 'website';
         return config;
     },
     (error) => {
@@ -29,18 +73,18 @@ export const getErrorMessage = (error) => {
         return 'เกิดข้อผิดพลาด';
     }
 
-    // Handle 429 Too Many Requests (Rate Limiting)
-    if (error.response?.status === 429) {
-        const retryAfter = error.response.headers['retry-after'];
-        if (retryAfter) {
-            const seconds = parseInt(retryAfter, 10);
-            const minutes = Math.ceil(seconds / 60);
-            return `คุณพยายามเข้าสู่ระบบบ่อยเกินไป กรุณารอ ${minutes} นาที แล้วลองอีกครั้ง`;
+    // Server responded but with error status (e.g. 502 Bad Gateway, 503)
+    const status = error.response?.status;
+    if (error.response != null && status >= 500) {
+        const body = error.response.data;
+        const text = typeof body === 'string' ? body.slice(0, 80) : (body?.message || body?.detail || body?.error);
+        if (text && typeof text === 'string' && !text.startsWith('<')) {
+            return `เซิร์ฟเวอร์ตอบ ${status}: ${text}`;
         }
-        return 'คุณพยายามเข้าสู่ระบบบ่อยเกินไป กรุณารอสักครู่แล้วลองอีกครั้ง';
+        return `เซิร์ฟเวอร์ตอบ ${status} — backend อาจยังไม่พร้อม ลองรีเฟรชหรือตรวจสอบ Docker (api/legacy)`;
     }
 
-    // If error has response data
+    // If error has response data (4xx etc.)
     if (error.response?.data) {
         const data = error.response.data;
         
@@ -56,6 +100,22 @@ export const getErrorMessage = (error) => {
             }).join(', ');
         }
         
+        // ask_AA style: { error: "..." }
+        if (typeof data.error === 'string') {
+            // Some upstream providers return JSON stringified errors.
+            // Example: {"error":{"code":429,"message":"...","status":"RESOURCE_EXHAUSTED"}}
+            try {
+                const parsed = JSON.parse(data.error);
+                const msg = parsed?.error?.message || parsed?.message;
+                if (typeof msg === 'string' && msg.trim()) {
+                    return msg;
+                }
+            } catch {
+                // ignore
+            }
+            return data.error;
+        }
+
         // Handle string detail
         if (typeof data.detail === 'string') {
             return data.detail;
@@ -72,9 +132,13 @@ export const getErrorMessage = (error) => {
         }
     }
     
-    // Handle request error (no response)
+    // Handle request error (no response) = backend ไม่ตอบหรือ CORS/proxy ผิด
     if (error.request) {
-        return 'Network error. Please check your connection and try again.';
+        const code = error.code || '';
+        const base = API_CONFIG.baseURL || (typeof window !== 'undefined' ? window.location.origin : '');
+        const tryUrl = base ? `${base.replace(/\/$/, '')}/api/health` : '/api/health';
+        const msg = code ? `(${code}) ` : '';
+        return msg + 'เชื่อมต่อ backend ไม่ได้ — ลองเปิด ' + tryUrl + ' ในเบราว์เซอร์ว่าตอบหรือไม่ แล้วรีเฟรชหน้านี้';
     }
     
     // Handle other errors
@@ -89,118 +153,75 @@ api.interceptors.response.use(
     (error) => {
         // Handle 401 Unauthorized - clear token and redirect to login
         if (error.response?.status === 401) {
-            const publicPaths = ['/auth', '/verifying', '/forgot-password', '/reset-password', '/create-password'];
-            const currentPath = window.location.pathname;
-            
-            // Clear token and user data
-            localStorage.removeItem('authToken');
-            localStorage.removeItem('user');
-            
-            // Only redirect if not on a public page
-            if (!publicPaths.some(path => currentPath.startsWith(path))) {
-                // Use setTimeout to avoid redirect during render
-                setTimeout(() => {
-                    const newPath = window.location.pathname;
-                    // Double check we're not on a public path before redirecting
-                    if (!publicPaths.some(path => newPath.startsWith(path)) && newPath !== '/auth') {
-                        window.location.href = '/auth';
-                    }
-                }, 100);
+            setSessionToken(null);
+            // Optionally redirect to login page
+            if (window.location.pathname !== '/auth') {
+                window.location.href = '/auth';
             }
         }
-        
-        // Handle 429 Too Many Requests (Rate Limiting)
-        // Don't reject immediately - let the component handle the error message
-        // This allows us to show user-friendly messages
-        if (error.response?.status === 429) {
-            // The error will be handled by getErrorMessage() in the component
-            // We just ensure it's properly formatted
-            if (!error.response.data || !error.response.data.detail) {
-                error.response.data = {
-                    detail: 'คุณพยายามเข้าสู่ระบบบ่อยเกินไป กรุณารอสักครู่แล้วลองอีกครั้ง'
-                };
-            }
-        }
-        
         return Promise.reject(error);
     }
 );
 
-// Auth API functions
+// ใช้ตรวจว่า backend ตอบหรือไม่ (หน้า Login)
+export const healthCheck = () => api.get('/api/health').then(() => true).catch(() => false);
+
+// Auth API functions (ask_AA backend)
 export const authAPI = {
     // Login
     login: async (email, password) => {
-        const response = await api.post('/auth/login', {
+        const response = await api.post('/api/auth/login', {
             email,
             password,
         });
         // Store token in localStorage
-        if (response.data.access_token) {
-            localStorage.setItem('authToken', response.data.access_token);
+        if (response.data.token) {
+            setSessionToken(response.data.token);
         }
         return response.data;
     },
 
-    // Register
-    register: async (email, fullName) => {
-        const response = await api.post('/users/register', {
+    // Get current user
+    getCurrentUser: async () => {
+        const response = await api.get('/api/auth/me');
+        return response.data;
+    },
+
+    // Sign up (note: backend may require login after signup)
+    signup: async (name, email, password) => {
+        const response = await api.post('/api/auth/signup', {
+            name,
             email,
-            fullName,
-        });
-        return response.data;
-    },
-
-    // Verify email
-    verifyEmail: async (token) => {
-        const response = await api.post('/auth/verify-email', {
-            token,
-        });
-        return response.data;
-    },
-
-    // Set password
-    setPassword: async (token, password) => {
-        const response = await api.post('/auth/set-password', {
-            token,
             password,
-        });
-        return response.data;
-    },
-
-    // Resend verification email
-    resendVerification: async (email) => {
-        const response = await api.post('/auth/resend-verification', {
-            email,
         });
         return response.data;
     },
 
     // Forgot password - request password reset
     forgotPassword: async (email) => {
-        const response = await api.post('/auth/forgot-password', {
+        const response = await api.post('/api/auth/request-password-reset', {
             email,
         });
         return response.data;
     },
 
     // Reset password with token
-    resetPassword: async (token, password) => {
-        const response = await api.post('/auth/reset-password', {
+    resetPassword: async (token, newPassword) => {
+        const response = await api.post('/api/auth/reset-password', {
             token,
-            password,
+            newPassword,
         });
         return response.data;
     },
 
-    // Get current user
-    getCurrentUser: async () => {
-        const response = await api.get('/auth/me');
-        return response.data;
-    },
-
     // Logout
-    logout: () => {
-        localStorage.removeItem('authToken');
+    logout: async () => {
+        try {
+            await api.post('/api/auth/logout');
+        } catch (e) {
+            // ignore
+        }
+        setSessionToken(null);
         localStorage.removeItem('user');
     },
 };
@@ -209,9 +230,9 @@ export const authAPI = {
 export const credentialAPI = {
     // Change password
     changePassword: async (oldPassword, newPassword) => {
-        const response = await api.post('/credentials/change-password', {
-            old_password: oldPassword,
-            new_password: newPassword,
+        const response = await api.post('/api/auth/change-password', {
+            currentPassword: oldPassword,
+            newPassword,
         });
         return response.data;
     },
@@ -219,219 +240,123 @@ export const credentialAPI = {
 
 // User API functions
 export const userAPI = {
-    // Get current user profile
     getCurrentUser: async () => {
-        const response = await api.get('/auth/me');
+        const response = await api.get('/api/auth/me');
         return response.data;
     },
-
-    // Update current user profile (convenience method)
-    // Uses /users/me endpoint - no user_id needed, uses current user from token
-    updateProfile: async (profileData) => {
-        // Build payload - backend expects Optional[str] which can be None (null) or string
-        const payload = {};
-        
-        // Always include firstName (can be string or null)
-        if (profileData.firstName !== undefined) {
-            payload.firstName = profileData.firstName === '' || profileData.firstName === null ? null : profileData.firstName;
-        }
-        
-        // Include lastName (can be string or null)
-        if (profileData.lastName !== undefined) {
-            payload.lastName = profileData.lastName === '' || profileData.lastName === null ? null : profileData.lastName;
-        }
-        
-        // Include email if provided and not null (optional)
-        if (profileData.email !== undefined && profileData.email !== null && profileData.email !== '') {
-            payload.email = profileData.email;
-        }
-        
-        // Ensure at least one field is provided
-        if (Object.keys(payload).length === 0) {
-            throw new Error('At least one field (firstName, lastName, or email) must be provided');
-        }
-        
-        console.log('Sending update profile request:', payload);
-        const response = await api.put('/users/me', payload);
-        return response.data;
-    },
-
-    // Update user profile by ID (admin only)
-    updateProfileById: async (userId, profileData) => {
-        // Ensure userId is an integer
-        const userIdInt = typeof userId === 'string' ? parseInt(userId, 10) : userId;
-        if (isNaN(userIdInt)) {
-            throw new Error('Invalid user ID');
-        }
-        const response = await api.put(`/users/${userIdInt}`, {
-            firstName: profileData.firstName,
-            lastName: profileData.lastName,
-            email: profileData.email,
-        });
-        return response.data;
-    },
-
-    // Get user by ID
-    getUserById: async (userId) => {
-        // Ensure userId is an integer
-        const userIdInt = typeof userId === 'string' ? parseInt(userId, 10) : userId;
-        if (isNaN(userIdInt)) {
-            throw new Error('Invalid user ID');
-        }
-        const response = await api.get(`/users/${userIdInt}`);
-        return response.data;
-    },
-
-    // Admin functions for approval
-    // Get pending approval users (admin only)
-    getPendingUsers: async () => {
-        const response = await api.get('/users/pending');
-        return response.data;
-    },
-
-    // Approve a user (admin only)
-    approveUser: async (userId) => {
-        const userIdInt = typeof userId === 'string' ? parseInt(userId, 10) : userId;
-        if (isNaN(userIdInt)) {
-            throw new Error('Invalid user ID');
-        }
-        const response = await api.put(`/users/${userIdInt}/approve`);
-        return response.data;
-    },
-
-    // Reject/unapprove a user (admin only)
-    rejectUser: async (userId) => {
-        const userIdInt = typeof userId === 'string' ? parseInt(userId, 10) : userId;
-        if (isNaN(userIdInt)) {
-            throw new Error('Invalid user ID');
-        }
-        const response = await api.put(`/users/${userIdInt}/reject`);
+    updateProfile: async (payload) => {
+        const timeout = payload.avatarBase64 ? 60000 : undefined;
+        const response = await api.patch('/api/auth/me', payload, timeout ? { timeout } : {});
         return response.data;
     },
 };
 
-// Chat API functions
+// Documents / Bots / Conversations / Chat / Uploads (ask_AA backend)
+export const documentsAPI = {
+    list: async () => {
+        const response = await api.get('/api/documents?summary=1');
+        return response.data;
+    },
+    get: async (documentId) => {
+        const response = await api.get(`/api/documents/${documentId}`);
+        return response.data;
+    },
+    update: async (documentId, payload) => {
+        const response = await api.patch(`/api/documents/${documentId}`, payload);
+        return response.data;
+    },
+    remove: async (documentId) => {
+        const response = await api.delete(`/api/documents/${documentId}`);
+        return response.data;
+    },
+};
+
+export const botsAPI = {
+    list: async () => {
+        const response = await api.get('/api/bots');
+        return response.data;
+    },
+    create: async (payload) => {
+        const response = await api.post('/api/bots', payload);
+        return response.data;
+    },
+    update: async (botId, payload) => {
+        const response = await api.patch(`/api/bots/${botId}`, payload);
+        return response.data;
+    },
+    remove: async (botId) => {
+        const response = await api.delete(`/api/bots/${botId}`);
+        return response.data;
+    },
+};
+
+export const conversationsAPI = {
+    list: async () => {
+        const response = await api.get('/api/conversations');
+        return response.data;
+    },
+    create: async (documentId, botId) => {
+        const response = await api.post('/api/conversations', { documentId, botId: botId || null });
+        return response.data;
+    },
+    remove: async (conversationId) => {
+        const response = await api.delete(`/api/conversations/${conversationId}`);
+        return response.data;
+    },
+};
+
+export const messagesAPI = {
+    list: async (conversationId, limit = 50) => {
+        const response = await api.get(`/api/conversations/${conversationId}/messages?limit=${limit}`);
+        return response.data;
+    },
+    feedback: async (messageId, rating) => {
+        const response = await api.post(`/api/messages/${messageId}/feedback`, { rating });
+        return response.data;
+    },
+};
+
 export const chatAPI = {
-    // Get all chats for current user
-    getChats: async (skip = 0, limit = 100) => {
-        const response = await api.get('/chats', {
-            params: { skip, limit }
-        });
-        return response.data;
-    },
-
-    // Get chat by ID
-    getChat: async (chatId) => {
-        const chatIdInt = typeof chatId === 'string' ? parseInt(chatId, 10) : chatId;
-        if (isNaN(chatIdInt)) {
-            throw new Error('Invalid chat ID');
-        }
-        const response = await api.get(`/chats/${chatIdInt}`);
-        return response.data;
-    },
-
-    // Create a new chat
-    createChat: async (name, user_ids = []) => {
-        const response = await api.post('/chats', {
-            name: name || null,
-            user_ids: user_ids
-        });
-        return response.data;
-    },
-
-    // Update chat
-    updateChat: async (chatId, name) => {
-        const chatIdInt = typeof chatId === 'string' ? parseInt(chatId, 10) : chatId;
-        if (isNaN(chatIdInt)) {
-            throw new Error('Invalid chat ID');
-        }
-        const response = await api.put(`/chats/${chatIdInt}`, {
-            name: name || null
-        });
-        return response.data;
-    },
-
-    // Delete chat
-    deleteChat: async (chatId) => {
-        const chatIdInt = typeof chatId === 'string' ? parseInt(chatId, 10) : chatId;
-        if (isNaN(chatIdInt)) {
-            throw new Error('Invalid chat ID');
-        }
-        const response = await api.delete(`/chats/${chatIdInt}`);
+    chat: async (conversationId, message) => {
+        const response = await api.post('/api/chat', { conversationId, message });
         return response.data;
     },
 };
 
-// Chat Message API functions
-export const chatMessageAPI = {
-    // Get all messages in a chat
-    getMessages: async (chatId, skip = 0, limit = 100) => {
-        const chatIdInt = typeof chatId === 'string' ? parseInt(chatId, 10) : chatId;
-        if (isNaN(chatIdInt)) {
-            throw new Error('Invalid chat ID');
-        }
-        const response = await api.get(`/chats/${chatIdInt}/messages`, {
-            params: { skip, limit }
+export const subscriptionAPI = {
+    get: async () => {
+        const response = await api.get('/api/subscription');
+        return response.data;
+    },
+};
+
+export const uploadAPI = {
+    createBatch: async (displayName) => {
+        const response = await api.post('/api/upload-batches', { displayName });
+        return response.data;
+    },
+    createFileSession: async (batchId, data) => {
+        const response = await api.post(`/api/upload-batches/${batchId}/files`, data);
+        return response.data;
+    },
+    uploadPart: async (uploadId, partNumber, blob) => {
+        const response = await api.put(`/api/uploads/${uploadId}/parts/${partNumber}`, blob, {
+            headers: { 'Content-Type': 'application/octet-stream' },
+            // Uploading large parts can take longer than the default 30s timeout on slow networks.
+            timeout: 0,
         });
         return response.data;
     },
-
-    // Get message by ID
-    getMessage: async (chatId, messageId) => {
-        const chatIdInt = typeof chatId === 'string' ? parseInt(chatId, 10) : chatId;
-        const messageIdInt = typeof messageId === 'string' ? parseInt(messageId, 10) : messageId;
-        if (isNaN(chatIdInt) || isNaN(messageIdInt)) {
-            throw new Error('Invalid chat ID or message ID');
-        }
-        const response = await api.get(`/chats/${chatIdInt}/messages/${messageIdInt}`);
+    completeFile: async (uploadId) => {
+        const response = await api.post(`/api/uploads/${uploadId}/complete`, undefined, { timeout: 120000 });
         return response.data;
     },
-
-    // Create a new message
-    createMessage: async (chatId, message) => {
-        const chatIdInt = typeof chatId === 'string' ? parseInt(chatId, 10) : chatId;
-        if (isNaN(chatIdInt)) {
-            throw new Error('Invalid chat ID');
-        }
-        const response = await api.post(`/chats/${chatIdInt}/messages`, {
-            message: message
-        });
+    completeBatch: async (batchId) => {
+        const response = await api.post(`/api/upload-batches/${batchId}/complete`, undefined, { timeout: 120000 });
         return response.data;
     },
-
-    // Update message
-    updateMessage: async (chatId, messageId, message) => {
-        const chatIdInt = typeof chatId === 'string' ? parseInt(chatId, 10) : chatId;
-        const messageIdInt = typeof messageId === 'string' ? parseInt(messageId, 10) : messageId;
-        if (isNaN(chatIdInt) || isNaN(messageIdInt)) {
-            throw new Error('Invalid chat ID or message ID');
-        }
-        const response = await api.put(`/chats/${chatIdInt}/messages/${messageIdInt}`, {
-            message: message
-        });
-        return response.data;
-    },
-
-    // Delete message
-    deleteMessage: async (chatId, messageId) => {
-        const chatIdInt = typeof chatId === 'string' ? parseInt(chatId, 10) : chatId;
-        const messageIdInt = typeof messageId === 'string' ? parseInt(messageId, 10) : messageId;
-        if (isNaN(chatIdInt) || isNaN(messageIdInt)) {
-            throw new Error('Invalid chat ID or message ID');
-        }
-        const response = await api.delete(`/chats/${chatIdInt}/messages/${messageIdInt}`);
-        return response.data;
-    },
-
-    // Create bot response
-    createBotResponse: async (chatId, message) => {
-        const chatIdInt = typeof chatId === 'string' ? parseInt(chatId, 10) : chatId;
-        if (isNaN(chatIdInt)) {
-            throw new Error('Invalid chat ID');
-        }
-        const response = await api.post(`/chats/${chatIdInt}/messages/bot-response`, {
-            message: message
-        });
+    getBatchStatus: async (batchId) => {
+        const response = await api.get(`/api/upload-batches/${batchId}`);
         return response.data;
     },
 };
